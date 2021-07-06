@@ -38,12 +38,16 @@ extern "C"
 #endif
 
 	FREERDP_API int progressive_compress(PROGRESSIVE_CONTEXT* progressive, const BYTE* pSrcData,
-	                                     UINT32 SrcSize, BYTE** ppDstData, UINT32* pDstSize);
+	                                     UINT32 SrcSize, UINT32 SrcFormat, UINT32 Width,
+	                                     UINT32 Height, UINT32 ScanLine,
+	                                     const REGION16* invalidRegion, BYTE** ppDstData,
+	                                     UINT32* pDstSize);
 
 	FREERDP_API INT32 progressive_decompress(PROGRESSIVE_CONTEXT* progressive, const BYTE* pSrcData,
 	                                         UINT32 SrcSize, BYTE* pDstData, UINT32 DstFormat,
 	                                         UINT32 nDstStep, UINT32 nXDst, UINT32 nYDst,
-	                                         REGION16* invalidRegion, UINT16 surfaceId);
+	                                         REGION16* invalidRegion, UINT16 surfaceId,
+	                                         UINT32 frameId);
 
 	FREERDP_API INT32 progressive_create_surface_context(PROGRESSIVE_CONTEXT* progressive,
 	                                                     UINT16 surfaceId, UINT32 width,

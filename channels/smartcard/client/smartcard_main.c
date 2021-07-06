@@ -180,6 +180,7 @@ void smartcard_context_free(void* pCtx)
 
 	/* cancel blocking calls like SCardGetStatusChange */
 	SCardCancel(pContext->hContext);
+	SCardReleaseContext(pContext->hContext);
 
 	if (MessageQueue_PostQuit(pContext->IrpQueue, 0) &&
 	    (WaitForSingleObject(pContext->thread, INFINITE) == WAIT_FAILED))
@@ -209,6 +210,7 @@ static void smartcard_release_all_contexts(SMARTCARD_DEVICE* smartcard)
 	 * Call SCardCancel on existing contexts, unblocking all outstanding SCardGetStatusChange calls.
 	 */
 
+	ListDictionary_Lock(smartcard->rgSCardContextList);
 	if (ListDictionary_Count(smartcard->rgSCardContextList) > 0)
 	{
 		pKeys = NULL;
@@ -232,11 +234,17 @@ static void smartcard_release_all_contexts(SMARTCARD_DEVICE* smartcard)
 
 		free(pKeys);
 	}
+	ListDictionary_Unlock(smartcard->rgSCardContextList);
+
+	/* Put thread to sleep so that PC/SC can process the cancel requests. This fixes a race
+	 * condition that sometimes caused the pc/sc daemon to crash on MacOS (_xpc_api_misuse) */
+	SleepEx(100, FALSE);
 
 	/**
 	 * Call SCardReleaseContext on remaining contexts and remove them from rgSCardContextList.
 	 */
 
+	ListDictionary_Lock(smartcard->rgSCardContextList);
 	if (ListDictionary_Count(smartcard->rgSCardContextList) > 0)
 	{
 		pKeys = NULL;
@@ -244,31 +252,12 @@ static void smartcard_release_all_contexts(SMARTCARD_DEVICE* smartcard)
 
 		for (index = 0; index < keyCount; index++)
 		{
-			pContext = (SMARTCARD_CONTEXT*)ListDictionary_Remove(smartcard->rgSCardContextList,
-			                                                     (void*)pKeys[index]);
-
-			if (!pContext)
-				continue;
-
-			hContext = pContext->hContext;
-
-			if (SCardIsValidContext(hContext) == SCARD_S_SUCCESS)
-			{
-				SCardReleaseContext(hContext);
-
-				if (MessageQueue_PostQuit(pContext->IrpQueue, 0) &&
-				    (WaitForSingleObject(pContext->thread, INFINITE) == WAIT_FAILED))
-					WLog_ERR(TAG, "WaitForSingleObject failed with error %" PRIu32 "!",
-					         GetLastError());
-
-				CloseHandle(pContext->thread);
-				MessageQueue_Free(pContext->IrpQueue);
-				free(pContext);
-			}
+			ListDictionary_SetItemValue(smartcard->rgSCardContextList, (void*)pKeys[index], NULL);
 		}
 
 		free(pKeys);
 	}
+	ListDictionary_Unlock(smartcard->rgSCardContextList);
 }
 
 static UINT smartcard_free_(SMARTCARD_DEVICE* smartcard)
@@ -488,6 +477,7 @@ static UINT smartcard_process_irp(SMARTCARD_DEVICE* smartcard, IRP* irp)
 		{
 			if ((status = smartcard_irp_device_control_call(smartcard, operation)))
 			{
+				free(operation);
 				WLog_ERR(TAG, "smartcard_irp_device_control_call failed with error %" PRId32 "!",
 				         status);
 				return (UINT32)status;
@@ -721,6 +711,7 @@ static UINT smartcard_irp_request(DEVICE* device, IRP* irp)
  *
  * @return 0 on success, otherwise a Win32 error code
  */
+extern UINT DeviceServiceEntry(PDEVICE_SERVICE_ENTRY_POINTS pEntryPoints);
 UINT DeviceServiceEntry(PDEVICE_SERVICE_ENTRY_POINTS pEntryPoints)
 {
 	SMARTCARD_DEVICE* smartcard = NULL;

@@ -185,7 +185,6 @@
  */
 
 static int rdp_client_connect_finalize(rdpRdp* rdp);
-static BOOL rdp_send_server_control_granted_pdu(rdpRdp* rdp);
 
 static BOOL rdp_client_reset_codecs(rdpContext* context)
 {
@@ -200,8 +199,8 @@ static BOOL rdp_client_reset_codecs(rdpContext* context)
 	if (!context->codecs)
 		return FALSE;
 
-	if (!freerdp_client_codecs_prepare(context->codecs, FREERDP_CODEC_ALL, settings->DesktopWidth,
-	                                   settings->DesktopHeight))
+	if (!freerdp_client_codecs_prepare(context->codecs, freerdp_settings_get_codecs_flags(settings),
+	                                   settings->DesktopWidth, settings->DesktopHeight))
 		return FALSE;
 
 /* Runtime H264 detection. (only available if dynamic backend loading is defined)
@@ -1194,11 +1193,28 @@ int rdp_client_transition_to_state(rdpRdp* rdp, int state)
 
 		case CONNECTION_STATE_ACTIVE:
 			rdp->state = CONNECTION_STATE_ACTIVE;
+			{
+				ActivatedEventArgs activatedEvent;
+				rdpContext* context = rdp->context;
+				EventArgsInit(&activatedEvent, "libfreerdp");
+				activatedEvent.firstActivation = !rdp->deactivation_reactivation;
+				PubSub_OnActivated(context->pubSub, context, &activatedEvent);
+			}
+
 			break;
 
 		default:
 			status = -1;
 			break;
+	}
+
+	{
+		ConnectionStateChangeEventArgs stateEvent;
+		rdpContext* context = rdp->context;
+		EventArgsInit(&stateEvent, "libfreerdp");
+		stateEvent.state = rdp->state;
+		stateEvent.active = rdp->state == CONNECTION_STATE_ACTIVE;
+		PubSub_OnConnectionStateChange(context->pubSub, context, &stateEvent);
 	}
 
 	return status;
@@ -1588,4 +1604,11 @@ const char* rdp_server_connection_state_string(int state)
 		default:
 			return "UNKNOWN";
 	}
+}
+
+int rdp_client_get_state(rdpRdp* rdp)
+{
+	if (!rdp)
+		return -1;
+	return rdp->state;
 }

@@ -62,6 +62,8 @@ enum
 	UWAC_MOD_SHIFT_MASK = 0x01,
 	UWAC_MOD_ALT_MASK = 0x02,
 	UWAC_MOD_CONTROL_MASK = 0x04,
+	UWAC_MOD_CAPS_MASK = 0x08,
+	UWAC_MOD_NUM_MASK = 0x10,
 };
 
 /** @brief a position */
@@ -91,6 +93,7 @@ enum
 	UWAC_EVENT_POINTER_BUTTONS,
 	UWAC_EVENT_POINTER_AXIS,
 	UWAC_EVENT_KEYBOARD_ENTER,
+	UWAC_EVENT_KEYBOARD_MODIFIERS,
 	UWAC_EVENT_KEY,
 	UWAC_EVENT_TOUCH_FRAME_BEGIN,
 	UWAC_EVENT_TOUCH_UP,
@@ -104,6 +107,9 @@ enum
 	UWAC_EVENT_CLIPBOARD_SELECT,
 	UWAC_EVENT_CLIPBOARD_OFFER,
 	UWAC_EVENT_OUTPUT_GEOMETRY,
+	UWAC_EVENT_POINTER_AXIS_DISCRETE,
+	UWAC_EVENT_POINTER_FRAME,
+	UWAC_EVENT_POINTER_SOURCE
 };
 
 /** @brief window states */
@@ -144,6 +150,13 @@ struct uwac_keyboard_enter_event
 };
 typedef struct uwac_keyboard_enter_event UwacKeyboardEnterLeaveEvent;
 
+struct uwac_keyboard_modifiers_event
+{
+	int type;
+	uint32_t modifiers;
+};
+typedef struct uwac_keyboard_modifiers_event UwacKeyboardModifiersEvent;
+
 struct uwac_pointer_enter_event
 {
 	int type;
@@ -183,6 +196,23 @@ struct uwac_pointer_axis_event
 	wl_fixed_t value;
 };
 typedef struct uwac_pointer_axis_event UwacPointerAxisEvent;
+
+struct uwac_pointer_frame_event
+{
+	int type;
+	UwacWindow* window;
+	UwacSeat* seat;
+};
+typedef struct uwac_pointer_frame_event UwacPointerFrameEvent;
+
+struct uwac_pointer_source_event
+{
+	int type;
+	UwacWindow* window;
+	UwacSeat* seat;
+	enum wl_pointer_axis_source axis_source;
+};
+typedef struct uwac_pointer_source_event UwacPointerSourceEvent;
 
 struct uwac_touch_frame_event
 {
@@ -275,7 +305,10 @@ union uwac_event {
 	UwacPointerMotionEvent mouse_motion;
 	UwacPointerButtonEvent mouse_button;
 	UwacPointerAxisEvent mouse_axis;
+	UwacPointerFrameEvent mouse_frame;
+	UwacPointerSourceEvent mouse_source;
 	UwacKeyboardEnterLeaveEvent keyboard_enter_leave;
+	UwacKeyboardModifiersEvent keyboard_modifiers;
 	UwacClipboardEvent clipboard;
 	UwacKeyEvent key;
 	UwacTouchFrameBegin touchFrameBegin;
@@ -304,7 +337,7 @@ extern "C"
 	 *	handler is supposed to answer if the execution can continue. I can also be used
 	 *	to log things.
 	 *
-	 * @param handler
+	 * @param handler the error handling function to install
 	 */
 	UWAC_API void UwacInstallErrorHandler(UwacErrorHandler handler);
 

@@ -93,7 +93,7 @@ struct _FREERDP_URBDRC_SERVICE_ENTRY_POINTS
 {
 	IWTSPlugin* plugin;
 	PREGISTERURBDRCSERVICE pRegisterUDEVMAN;
-	ADDIN_ARGV* args;
+	const ADDIN_ARGV* args;
 };
 typedef struct _FREERDP_URBDRC_SERVICE_ENTRY_POINTS FREERDP_URBDRC_SERVICE_ENTRY_POINTS;
 typedef FREERDP_URBDRC_SERVICE_ENTRY_POINTS* PFREERDP_URBDRC_SERVICE_ENTRY_POINTS;
@@ -134,7 +134,7 @@ struct _IUDEVICE
 	int (*bulk_or_interrupt_transfer)(IUDEVICE* idev, URBDRC_CHANNEL_CALLBACK* callback,
 	                                  UINT32 MessageId, UINT32 RequestId, UINT32 EndpointAddress,
 	                                  UINT32 TransferFlags, BOOL NoAck, UINT32 BufferSize,
-	                                  t_isoch_transfer_cb cb, UINT32 Timeout);
+	                                  const BYTE* data, t_isoch_transfer_cb cb, UINT32 Timeout);
 
 	int (*select_configuration)(IUDEVICE* idev, UINT32 bConfigurationValue);
 

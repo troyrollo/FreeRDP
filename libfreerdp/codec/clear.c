@@ -566,7 +566,7 @@ static BOOL resize_vbar_entry(CLEAR_CONTEXT* clear, CLEAR_VBAR_ENTRY* vBarEntry)
 		const UINT32 diffSize = (vBarEntry->count - vBarEntry->size) * bpp;
 		BYTE* tmp;
 		vBarEntry->size = vBarEntry->count;
-		tmp = (BYTE*)realloc(vBarEntry->pixels, vBarEntry->count * bpp);
+		tmp = (BYTE*)realloc(vBarEntry->pixels, vBarEntry->count * bpp * 1ULL);
 
 		if (!tmp)
 		{
@@ -980,7 +980,7 @@ static BOOL clear_decompress_glyph_data(CLEAR_CONTEXT* clear, wStream* s, UINT32
 		if (glyphEntry->count > glyphEntry->size)
 		{
 			BYTE* tmp;
-			tmp = realloc(glyphEntry->pixels, glyphEntry->count * bpp);
+			tmp = realloc(glyphEntry->pixels, glyphEntry->count * bpp * 1ULL);
 
 			if (!tmp)
 			{
@@ -1014,7 +1014,7 @@ static INLINE BOOL updateContextFormat(CLEAR_CONTEXT* clear, UINT32 DstFormat)
 		return FALSE;
 
 	clear->format = DstFormat;
-	return nsc_context_set_pixel_format(clear->nsc, DstFormat);
+	return nsc_context_set_parameters(clear->nsc, NSC_COLOR_FORMAT, DstFormat);
 }
 
 INT32 clear_decompress(CLEAR_CONTEXT* clear, const BYTE* pSrcData, UINT32 SrcSize, UINT32 nWidth,

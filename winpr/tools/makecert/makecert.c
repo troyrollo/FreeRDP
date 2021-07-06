@@ -25,6 +25,7 @@
 #include <winpr/cmdline.h>
 #include <winpr/sysinfo.h>
 #include <winpr/crypto.h>
+#include <winpr/file.h>
 
 #ifdef WITH_OPENSSL
 #include <openssl/crypto.h>
@@ -81,9 +82,16 @@ static char* makecert_read_str(BIO* bio, size_t* pOffset)
 		new_len = length * 2;
 		if (new_len == 0)
 			new_len = 2048;
+
+		if (new_len > INT_MAX)
+		{
+			status = -1;
+			break;
+		}
+
 		new_str = (char*)realloc(x509_str, new_len);
 
-		if (!new_str || (new_len > INT_MAX))
+		if (!new_str)
 		{
 			status = -1;
 			break;
@@ -474,7 +482,7 @@ int makecert_context_output_certificate_file(MAKECERT_CONTEXT* context, char* pa
 	if (!fullpath)
 		goto out_fail;
 
-	fp = fopen(fullpath, "w+");
+	fp = winpr_fopen(fullpath, "w+");
 
 	if (fp)
 	{
@@ -632,7 +640,7 @@ int makecert_context_output_private_key_file(MAKECERT_CONTEXT* context, char* pa
 	if (!fullpath)
 		goto out_fail;
 
-	fp = fopen(fullpath, "w+");
+	fp = winpr_fopen(fullpath, "w+");
 
 	if (!fp)
 		goto out_fail;
@@ -1052,7 +1060,7 @@ int makecert_context_process(MAKECERT_CONTEXT* context, int argc, char** argv)
 
 	if (!context->live)
 	{
-		if (!PathFileExistsA(context->output_path))
+		if (!winpr_PathFileExists(context->output_path))
 		{
 			if (!CreateDirectoryA(context->output_path, NULL))
 				return -1;

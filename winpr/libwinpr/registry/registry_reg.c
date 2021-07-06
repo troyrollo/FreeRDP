@@ -27,7 +27,9 @@
 #include <string.h>
 
 #include <winpr/wtypes.h>
+#include <winpr/assert.h>
 #include <winpr/crt.h>
+#include <winpr/file.h>
 
 #include "registry_reg.h"
 
@@ -70,6 +72,7 @@ static char* REG_DATA_TYPE_STRINGS[] = { "REG_NONE",
 static void reg_load_start(Reg* reg)
 {
 	INT64 file_size;
+	WINPR_ASSERT(reg);
 	_fseeki64(reg->fp, 0, SEEK_END);
 	file_size = _ftelli64(reg->fp);
 	_fseeki64(reg->fp, 0, SEEK_SET);
@@ -80,12 +83,12 @@ static void reg_load_start(Reg* reg)
 	if (file_size < 1)
 		return;
 
-	reg->buffer = (char*)malloc(file_size + 2);
+	reg->buffer = (char*)malloc((size_t)file_size + 2);
 
 	if (!reg->buffer)
 		return;
 
-	if (fread(reg->buffer, file_size, 1, reg->fp) != 1)
+	if (fread(reg->buffer, (size_t)file_size, 1, reg->fp) != 1)
 	{
 		free(reg->buffer);
 		reg->buffer = NULL;
@@ -113,11 +116,13 @@ static RegVal* reg_load_value(Reg* reg, RegKey* key)
 {
 	int index;
 	char* p[5];
-	int length;
+	size_t length;
 	char* name;
 	char* type;
 	char* data;
 	RegVal* value;
+	WINPR_ASSERT(reg);
+	WINPR_ASSERT(key);
 	p[0] = reg->line + 1;
 	p[1] = strstr(p[0], "\"=");
 	p[2] = p[1] + 2;
@@ -232,6 +237,7 @@ static char* reg_load_get_next_line(Reg* reg)
 
 static char* reg_load_peek_next_line(Reg* reg)
 {
+	WINPR_ASSERT(reg);
 	return reg->next_line;
 }
 
@@ -240,7 +246,10 @@ static void reg_insert_key(Reg* reg, RegKey* key, RegKey* subkey)
 	char* name;
 	char* path;
 	char* save;
-	int length;
+	size_t length;
+	WINPR_ASSERT(reg);
+	WINPR_ASSERT(key);
+	WINPR_ASSERT(subkey);
 	path = _strdup(subkey->name);
 
 	if (!path)
@@ -276,6 +285,8 @@ static RegKey* reg_load_key(Reg* reg, RegKey* key)
 	int length;
 	char* line;
 	RegKey* subkey;
+	WINPR_ASSERT(reg);
+	WINPR_ASSERT(key);
 	p[0] = reg->line + 1;
 	p[1] = strrchr(p[0], ']');
 	subkey = (RegKey*)malloc(sizeof(RegKey));
@@ -353,6 +364,8 @@ static void reg_load(Reg* reg)
 
 static void reg_unload_value(Reg* reg, RegVal* value)
 {
+	WINPR_ASSERT(reg);
+	WINPR_ASSERT(value);
 	if (value->type == REG_DWORD)
 	{
 	}
@@ -372,6 +385,8 @@ static void reg_unload_key(Reg* reg, RegKey* key)
 {
 	RegVal* pValue;
 	RegVal* pValueNext;
+	WINPR_ASSERT(reg);
+	WINPR_ASSERT(key);
 	pValue = key->values;
 
 	while (pValue != NULL)
@@ -389,6 +404,7 @@ static void reg_unload(Reg* reg)
 {
 	RegKey* pKey;
 	RegKey* pKeyNext;
+	WINPR_ASSERT(reg);
 	pKey = reg->root_key->subkeys;
 
 	while (pKey != NULL)
@@ -414,14 +430,14 @@ Reg* reg_open(BOOL read_only)
 
 	if (reg->read_only)
 	{
-		reg->fp = fopen(reg->filename, "r");
+		reg->fp = winpr_fopen(reg->filename, "r");
 	}
 	else
 	{
-		reg->fp = fopen(reg->filename, "r+");
+		reg->fp = winpr_fopen(reg->filename, "r+");
 
 		if (!reg->fp)
-			reg->fp = fopen(reg->filename, "w+");
+			reg->fp = winpr_fopen(reg->filename, "w+");
 	}
 
 	if (!reg->fp)

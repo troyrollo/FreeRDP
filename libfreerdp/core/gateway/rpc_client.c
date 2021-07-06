@@ -383,7 +383,8 @@ static int rpc_client_recv_fragment(rdpRpc* rpc, wStream* fragment)
 				pdu->Type = PTYPE_RESPONSE;
 				pdu->CallId = rpc->StubCallId;
 				Stream_SealLength(pdu->s);
-				rpc_client_recv_pdu(rpc, pdu);
+				if (rpc_client_recv_pdu(rpc, pdu) < 0)
+					return -1;
 				rpc_pdu_reset(pdu);
 				rpc->StubFragCount = 0;
 				rpc->StubCallId = 0;
@@ -691,7 +692,7 @@ static int rpc_client_nondefault_out_channel_recv(rdpRpc* rpc)
 				WLog_ERR(TAG,
 				         "rpc_client_nondefault_out_channel_recv: Unexpected message %08" PRIx32,
 				         nextOutChannel->State);
-				return -1;
+				status = -1;
 		}
 
 		http_response_free(response);
@@ -949,7 +950,7 @@ BOOL rpc_client_write_call(rdpRpc* rpc, wStream* s, UINT16 opnum)
 	if (!clientCall)
 		goto fail;
 
-	if (ArrayList_Add(rpc->client->ClientCallList, clientCall) < 0)
+	if (!ArrayList_Append(rpc->client->ClientCallList, clientCall))
 	{
 		rpc_client_call_free(clientCall);
 		goto fail;
@@ -983,7 +984,7 @@ BOOL rpc_client_write_call(rdpRpc* rpc, wStream* s, UINT16 opnum)
 	CopyMemory(&buffer[offset], &request_pdu.auth_verifier.auth_type, 8);
 	offset += 8;
 	Buffers[0].BufferType = SECBUFFER_DATA | SECBUFFER_READONLY; /* auth_data */
-	Buffers[1].BufferType = SECBUFFER_TOKEN; /* signature */
+	Buffers[1].BufferType = SECBUFFER_TOKEN;                     /* signature */
 	Buffers[0].pvBuffer = buffer;
 	Buffers[0].cbBuffer = offset;
 	Buffers[1].cbBuffer = size;
@@ -1041,6 +1042,7 @@ static BOOL rpc_client_resolve_gateway(rdpSettings* settings, char** host, UINT1
 
 RpcClient* rpc_client_new(rdpContext* context, UINT32 max_recv_frag)
 {
+	wObject* obj;
 	RpcClient* client = (RpcClient*)calloc(1, sizeof(RpcClient));
 
 	if (!client)
@@ -1081,7 +1083,8 @@ RpcClient* rpc_client_new(rdpContext* context, UINT32 max_recv_frag)
 	if (!client->ClientCallList)
 		goto fail;
 
-	ArrayList_Object(client->ClientCallList)->fnObjectFree = rpc_array_client_call_free;
+	obj = ArrayList_Object(client->ClientCallList);
+	obj->fnObjectFree = rpc_array_client_call_free;
 	return client;
 fail:
 	rpc_client_free(client);

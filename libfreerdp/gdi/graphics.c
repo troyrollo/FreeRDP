@@ -52,7 +52,7 @@ HGDI_BITMAP gdi_create_bitmap(rdpGdi* gdi, UINT32 nWidth, UINT32 nHeight, UINT32
 		return NULL;
 
 	nDstStep = nWidth * GetBytesPerPixel(gdi->dstFormat);
-	pDstData = _aligned_malloc(nHeight * nDstStep, 16);
+	pDstData = _aligned_malloc(nHeight * nDstStep * 1ULL, 16);
 
 	if (!pDstData)
 		return NULL;
@@ -162,6 +162,8 @@ static BOOL gdi_Bitmap_Decompress(rdpContext* context, rdpBitmap* bitmap, const 
 		}
 		else
 		{
+			freerdp_planar_switch_bgr(context->codecs->planar,
+			                          context->settings->DrawAllowDynamicColorFidelity);
 			if (!planar_decompress(context->codecs->planar, pSrcData, SrcSize, DstWidth, DstHeight,
 			                       bitmap->data, bitmap->format, 0, 0, 0, DstWidth, DstHeight,
 			                       TRUE))

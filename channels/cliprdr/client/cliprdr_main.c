@@ -24,6 +24,7 @@
 #include "config.h"
 #endif
 
+#include <winpr/wtypes.h>
 #include <winpr/crt.h>
 #include <winpr/print.h>
 
@@ -31,23 +32,43 @@
 #include <freerdp/constants.h>
 #include <freerdp/client/cliprdr.h>
 
+#include "../../../channels/client/addin.h"
+
 #include "cliprdr_main.h"
 #include "cliprdr_format.h"
 #include "../cliprdr_common.h"
 
 #ifdef WITH_DEBUG_CLIPRDR
-static const char* const CB_MSG_TYPE_STRINGS[] = { "",
-	                                               "CB_MONITOR_READY",
-	                                               "CB_FORMAT_LIST",
-	                                               "CB_FORMAT_LIST_RESPONSE",
-	                                               "CB_FORMAT_DATA_REQUEST",
-	                                               "CB_FORMAT_DATA_RESPONSE",
-	                                               "CB_TEMP_DIRECTORY",
-	                                               "CB_CLIP_CAPS",
-	                                               "CB_FILECONTENTS_REQUEST",
-	                                               "CB_FILECONTENTS_RESPONSE",
-	                                               "CB_LOCK_CLIPDATA",
-	                                               "CB_UNLOCK_CLIPDATA" };
+static const char* CB_MSG_TYPE_STRINGS(UINT32 type)
+{
+	switch (type)
+	{
+		case CB_MONITOR_READY:
+			return "CB_MONITOR_READY";
+		case CB_FORMAT_LIST:
+			return "CB_FORMAT_LIST";
+		case CB_FORMAT_LIST_RESPONSE:
+			return "CB_FORMAT_LIST_RESPONSE";
+		case CB_FORMAT_DATA_REQUEST:
+			return "CB_FORMAT_DATA_REQUEST";
+		case CB_FORMAT_DATA_RESPONSE:
+			return "CB_FORMAT_DATA_RESPONSE";
+		case CB_TEMP_DIRECTORY:
+			return "CB_TEMP_DIRECTORY";
+		case CB_CLIP_CAPS:
+			return "CB_CLIP_CAPS";
+		case CB_FILECONTENTS_REQUEST:
+			return "CB_FILECONTENTS_REQUEST";
+		case CB_FILECONTENTS_RESPONSE:
+			return "CB_FILECONTENTS_RESPONSE";
+		case CB_LOCK_CLIPDATA:
+			return "CB_LOCK_CLIPDATA";
+		case CB_UNLOCK_CLIPDATA:
+			return "CB_UNLOCK_CLIPDATA";
+		default:
+			return "UNKNOWN";
+	}
+}
 #endif
 
 CliprdrClientContext* cliprdr_get_client_interface(cliprdrPlugin* cliprdr)
@@ -426,8 +447,9 @@ static UINT cliprdr_process_unlock_clipdata(cliprdrPlugin* cliprdr, wStream* s, 
  *
  * @return 0 on success, otherwise a Win32 error code
  */
-static UINT cliprdr_order_recv(cliprdrPlugin* cliprdr, wStream* s)
+static UINT cliprdr_order_recv(LPVOID userdata, wStream* s)
 {
+	cliprdrPlugin* cliprdr = userdata;
 	UINT16 msgType;
 	UINT16 msgFlags;
 	UINT32 dataLen;
@@ -445,7 +467,7 @@ static UINT cliprdr_order_recv(cliprdrPlugin* cliprdr, wStream* s)
 
 #ifdef WITH_DEBUG_CLIPRDR
 	WLog_DBG(TAG, "msgType: %s (%" PRIu16 "), msgFlags: %" PRIu16 " dataLen: %" PRIu32 "",
-	         CB_MSG_TYPE_STRINGS[msgType], msgType, msgFlags, dataLen);
+	         CB_MSG_TYPE_STRINGS(msgType), msgType, msgFlags, dataLen);
 	winpr_HexDump(TAG, WLOG_DEBUG, Stream_Buffer(s), dataLen + 8);
 #endif
 
@@ -830,67 +852,6 @@ cliprdr_client_file_contents_response(CliprdrClientContext* context,
 	return cliprdr_packet_send(cliprdr, s);
 }
 
-/**
- * Function description
- *
- * @return 0 on success, otherwise a Win32 error code
- */
-static UINT cliprdr_virtual_channel_event_data_received(cliprdrPlugin* cliprdr, void* pData,
-                                                        UINT32 dataLength, UINT32 totalLength,
-                                                        UINT32 dataFlags)
-{
-	wStream* data_in;
-
-	if ((dataFlags & CHANNEL_FLAG_SUSPEND) || (dataFlags & CHANNEL_FLAG_RESUME))
-	{
-		return CHANNEL_RC_OK;
-	}
-
-	if (dataFlags & CHANNEL_FLAG_FIRST)
-	{
-		if (cliprdr->data_in)
-			Stream_Free(cliprdr->data_in, TRUE);
-
-		cliprdr->data_in = Stream_New(NULL, totalLength);
-	}
-
-	if (!(data_in = cliprdr->data_in))
-	{
-		WLog_ERR(TAG, "Stream_New failed!");
-		return CHANNEL_RC_NO_MEMORY;
-	}
-
-	if (!Stream_EnsureRemainingCapacity(data_in, dataLength))
-	{
-		Stream_Free(cliprdr->data_in, TRUE);
-		cliprdr->data_in = NULL;
-		return CHANNEL_RC_NO_MEMORY;
-	}
-
-	Stream_Write(data_in, pData, dataLength);
-
-	if (dataFlags & CHANNEL_FLAG_LAST)
-	{
-		if (Stream_Capacity(data_in) != Stream_GetPosition(data_in))
-		{
-			WLog_ERR(TAG, "cliprdr_plugin_process_received: read error");
-			return ERROR_INTERNAL_ERROR;
-		}
-
-		cliprdr->data_in = NULL;
-		Stream_SealLength(data_in);
-		Stream_SetPosition(data_in, 0);
-
-		if (!MessageQueue_Post(cliprdr->queue, NULL, 0, (void*)data_in, NULL))
-		{
-			WLog_ERR(TAG, "MessageQueue_Post failed!");
-			return ERROR_INTERNAL_ERROR;
-		}
-	}
-
-	return CHANNEL_RC_OK;
-}
-
 static VOID VCAPITYPE cliprdr_virtual_channel_open_event_ex(LPVOID lpUserParam, DWORD openHandle,
                                                             UINT event, LPVOID pData,
                                                             UINT32 dataLength, UINT32 totalLength,
@@ -907,8 +868,8 @@ static VOID VCAPITYPE cliprdr_virtual_channel_open_event_ex(LPVOID lpUserParam, 
 				WLog_ERR(TAG, "error no match");
 				return;
 			}
-			if ((error = cliprdr_virtual_channel_event_data_received(cliprdr, pData, dataLength,
-			                                                         totalLength, dataFlags)))
+			if ((error = channel_client_post_message(cliprdr->MsgsHandle, pData, dataLength,
+			                                         totalLength, dataFlags)))
 				WLog_ERR(TAG, "failed with error %" PRIu32 "", error);
 
 			break;
@@ -930,62 +891,6 @@ static VOID VCAPITYPE cliprdr_virtual_channel_open_event_ex(LPVOID lpUserParam, 
 		                "cliprdr_virtual_channel_open_event_ex reported an error");
 }
 
-static DWORD WINAPI cliprdr_virtual_channel_client_thread(LPVOID arg)
-{
-	wStream* data;
-	wMessage message;
-	cliprdrPlugin* cliprdr = (cliprdrPlugin*)arg;
-	UINT error = CHANNEL_RC_OK;
-
-	while (1)
-	{
-		if (!MessageQueue_Wait(cliprdr->queue))
-		{
-			WLog_ERR(TAG, "MessageQueue_Wait failed!");
-			error = ERROR_INTERNAL_ERROR;
-			break;
-		}
-
-		if (!MessageQueue_Peek(cliprdr->queue, &message, TRUE))
-		{
-			WLog_ERR(TAG, "MessageQueue_Peek failed!");
-			error = ERROR_INTERNAL_ERROR;
-			break;
-		}
-
-		if (message.id == WMQ_QUIT)
-			break;
-
-		if (message.id == 0)
-		{
-			data = (wStream*)message.wParam;
-
-			if ((error = cliprdr_order_recv(cliprdr, data)))
-			{
-				WLog_ERR(TAG, "cliprdr_order_recv failed with error %" PRIu32 "!", error);
-				break;
-			}
-		}
-	}
-
-	if (error && cliprdr->context->rdpcontext)
-		setChannelError(cliprdr->context->rdpcontext, error,
-		                "cliprdr_virtual_channel_client_thread reported an error");
-
-	ExitThread(error);
-	return error;
-}
-
-static void cliprdr_free_msg(void* obj)
-{
-	wMessage* msg = (wMessage*)obj;
-
-	if (msg)
-	{
-		wStream* s = (wStream*)msg->wParam;
-		Stream_Free(s, TRUE);
-	}
-}
 
 /**
  * Function description
@@ -996,7 +901,6 @@ static UINT cliprdr_virtual_channel_event_connected(cliprdrPlugin* cliprdr, LPVO
                                                     UINT32 dataLength)
 {
 	UINT32 status;
-	wObject obj = { 0 };
 	status = cliprdr->channelEntryPoints.pVirtualChannelOpenEx(
 	    cliprdr->InitHandle, &cliprdr->OpenHandle, cliprdr->channelDef.name,
 	    cliprdr_virtual_channel_open_event_ex);
@@ -1008,23 +912,8 @@ static UINT cliprdr_virtual_channel_event_connected(cliprdrPlugin* cliprdr, LPVO
 		return status;
 	}
 
-	obj.fnObjectFree = cliprdr_free_msg;
-	cliprdr->queue = MessageQueue_New(&obj);
-
-	if (!cliprdr->queue)
-	{
-		WLog_ERR(TAG, "MessageQueue_New failed!");
-		return ERROR_NOT_ENOUGH_MEMORY;
-	}
-
-	if (!(cliprdr->thread = CreateThread(NULL, 0, cliprdr_virtual_channel_client_thread,
-	                                     (void*)cliprdr, 0, NULL)))
-	{
-		WLog_ERR(TAG, "CreateThread failed!");
-		MessageQueue_Free(cliprdr->queue);
-		cliprdr->queue = NULL;
-		return ERROR_INTERNAL_ERROR;
-	}
+	cliprdr->MsgsHandle = channel_client_create_handler(cliprdr->context->rdpcontext, cliprdr,
+	                                                    cliprdr_order_recv, "cliprdr");
 
 	return CHANNEL_RC_OK;
 }
@@ -1041,16 +930,8 @@ static UINT cliprdr_virtual_channel_event_disconnected(cliprdrPlugin* cliprdr)
 	if (cliprdr->OpenHandle == 0)
 		return CHANNEL_RC_OK;
 
-	if (MessageQueue_PostQuit(cliprdr->queue, 0) &&
-	    (WaitForSingleObject(cliprdr->thread, INFINITE) == WAIT_FAILED))
-	{
-		rc = GetLastError();
-		WLog_ERR(TAG, "WaitForSingleObject failed with error %" PRIu32 "", rc);
-		return rc;
-	}
+	channel_client_quit_handler(cliprdr->MsgsHandle);
 
-	MessageQueue_Free(cliprdr->queue);
-	CloseHandle(cliprdr->thread);
 	rc = cliprdr->channelEntryPoints.pVirtualChannelCloseEx(cliprdr->InitHandle,
 	                                                        cliprdr->OpenHandle);
 
@@ -1062,12 +943,6 @@ static UINT cliprdr_virtual_channel_event_disconnected(cliprdrPlugin* cliprdr)
 	}
 
 	cliprdr->OpenHandle = 0;
-
-	if (cliprdr->data_in)
-	{
-		Stream_Free(cliprdr->data_in, TRUE);
-		cliprdr->data_in = NULL;
-	}
 
 	return CHANNEL_RC_OK;
 }

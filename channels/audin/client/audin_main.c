@@ -25,7 +25,7 @@
 #endif
 
 #include <errno.h>
-#include <assert.h>
+#include <winpr/assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -107,7 +107,7 @@ struct _AUDIN_PLUGIN
 	BOOL initialized;
 };
 
-static BOOL audin_process_addin_args(AUDIN_PLUGIN* audin, ADDIN_ARGV* args);
+static BOOL audin_process_addin_args(AUDIN_PLUGIN* audin, const ADDIN_ARGV* args);
 
 static UINT audin_channel_write_and_free(AUDIN_CHANNEL_CALLBACK* callback, wStream* out,
                                          BOOL freeStream)
@@ -121,8 +121,9 @@ static UINT audin_channel_write_and_free(AUDIN_CHANNEL_CALLBACK* callback, wStre
 		return ERROR_INTERNAL_ERROR;
 
 	Stream_SealLength(out);
-	error =
-	    callback->channel->Write(callback->channel, Stream_Length(out), Stream_Buffer(out), NULL);
+	WINPR_ASSERT(Stream_Length(out) <= ULONG_MAX);
+	error = callback->channel->Write(callback->channel, (ULONG)Stream_Length(out),
+	                                 Stream_Buffer(out), NULL);
 
 	if (freeStream)
 		Stream_Free(out, TRUE);
@@ -799,7 +800,7 @@ static UINT audin_register_device_plugin(IWTSPlugin* pPlugin, IAudinDevice* devi
  *
  * @return 0 on success, otherwise a Win32 error code
  */
-static UINT audin_load_device_plugin(AUDIN_PLUGIN* audin, char* name, ADDIN_ARGV* args)
+static UINT audin_load_device_plugin(AUDIN_PLUGIN* audin, const char* name, const ADDIN_ARGV* args)
 {
 	PFREERDP_AUDIN_DEVICE_ENTRY entry;
 	FREERDP_AUDIN_DEVICE_ENTRY_POINTS entryPoints;
@@ -868,7 +869,7 @@ static UINT audin_set_device_name(AUDIN_PLUGIN* audin, const char* device_name)
 	return CHANNEL_RC_OK;
 }
 
-BOOL audin_process_addin_args(AUDIN_PLUGIN* audin, ADDIN_ARGV* args)
+BOOL audin_process_addin_args(AUDIN_PLUGIN* audin, const ADDIN_ARGV* args)
 {
 	int status;
 	DWORD flags;
@@ -973,7 +974,7 @@ UINT DVCPluginEntry(IDRDYNVC_ENTRY_POINTS* pEntryPoints)
 		char* device;
 	};
 	UINT error = CHANNEL_RC_INITIALIZATION_ERROR;
-	ADDIN_ARGV* args;
+	const ADDIN_ARGV* args;
 	AUDIN_PLUGIN* audin;
 	struct SubsystemEntry entries[] =
 	{
@@ -995,11 +996,14 @@ UINT DVCPluginEntry(IDRDYNVC_ENTRY_POINTS* pEntryPoints)
 #if defined(WITH_MACAUDIO)
 		{ "mac", "default" },
 #endif
+#if defined(WITH_SNDIO)
+		{ "sndio", "default" },
+#endif
 		{ NULL, NULL }
 	};
 	struct SubsystemEntry* entry = &entries[0];
-	assert(pEntryPoints);
-	assert(pEntryPoints->GetPlugin);
+	WINPR_ASSERT(pEntryPoints);
+	WINPR_ASSERT(pEntryPoints->GetPlugin);
 	audin = (AUDIN_PLUGIN*)pEntryPoints->GetPlugin(pEntryPoints, "audin");
 
 	if (audin != NULL)

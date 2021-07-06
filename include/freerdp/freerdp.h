@@ -70,6 +70,7 @@ extern "C"
 #define VERIFY_CERT_FLAG_CHANGED 0x40
 #define VERIFY_CERT_FLAG_MISMATCH 0x80
 #define VERIFY_CERT_FLAG_MATCH_LEGACY_SHA1 0x100
+#define VERIFY_CERT_FLAG_FP_IS_PEM 0x200
 
 /* Message types used by gateway messaging callback */
 #define GATEWAY_MESSAGE_CONSENT 1
@@ -91,16 +92,21 @@ extern "C"
 	 *  @param common_name      The certificate registered hostname.
 	 *  @param subject          The common name of the certificate.
 	 *  @param issuer           The issuer of the certificate.
-	 *  @param fingerprint      The fingerprint of the certificate.
+	 *  @param fingerprint      The fingerprint of the certificate (old) or the certificate in PEM
+	 * format
 	 *  @param host_mismatch    A flag indicating the certificate
 	 *                          subject does not match the host connecting to.
 	 *
 	 *  @return 1 to accept and store a certificate, 2 to accept
 	 *          a certificate only for this session, 0 otherwise.
 	 */
-	typedef DWORD (*pVerifyCertificate)(freerdp* instance, const char* common_name,
-	                                    const char* subject, const char* issuer,
-	                                    const char* fingerprint, BOOL host_mismatch);
+#if defined(WITH_FREERDP_DEPRECATED)
+	typedef WINPR_DEPRECATED_VAR(
+	    "Use pVerifyCertificateEx",
+	    DWORD (*pVerifyCertificate)(freerdp* instance, const char* common_name, const char* subject,
+	                                const char* issuer, const char* fingerprint,
+	                                BOOL host_mismatch));
+#endif
 
 	/** @brief Callback used if user interaction is required to accept
 	 *         an unknown certificate.
@@ -110,7 +116,8 @@ extern "C"
 	 *  @param common_name      The certificate registered hostname.
 	 *  @param subject          The common name of the certificate.
 	 *  @param issuer           The issuer of the certificate.
-	 *  @param fingerprint      The fingerprint of the certificate.
+	 *  @param fingerprint      The fingerprint of the certificate (old) or the certificate in PEM
+	 * format (VERIFY_CERT_FLAG_FP_IS_PEM set)
 	 *  @param flags            Flags of type VERIFY_CERT_FLAG*
 	 *
 	 *  @return 1 to accept and store a certificate, 2 to accept
@@ -127,7 +134,7 @@ extern "C"
 	 *  @param common_name      The certificate registered hostname.
 	 *  @param subject          The common name of the new certificate.
 	 *  @param issuer           The issuer of the new certificate.
-	 *  @param fingerprint      The fingerprint of the new certificate.
+	 *  @param new_fingerprint  The fingerprint of the new certificate.
 	 *  @param old_subject      The common name of the old certificate.
 	 *  @param old_issuer       The issuer of the new certificate.
 	 *  @param old_fingerprint  The fingerprint of the old certificate.
@@ -135,11 +142,14 @@ extern "C"
 	 *  @return 1 to accept and store a certificate, 2 to accept
 	 *          a certificate only for this session, 0 otherwise.
 	 */
-
-	typedef DWORD (*pVerifyChangedCertificate)(freerdp* instance, const char* common_name,
-	                                           const char* subject, const char* issuer,
-	                                           const char* new_fingerprint, const char* old_subject,
-	                                           const char* old_issuer, const char* old_fingerprint);
+#if defined(WITH_FREERDP_DEPRECATED)
+	typedef WINPR_DEPRECATED_VAR(
+	    "Use pVerifyChangedCertificateEx",
+	    DWORD (*pVerifyChangedCertificate)(freerdp* instance, const char* common_name,
+	                                       const char* subject, const char* issuer,
+	                                       const char* new_fingerprint, const char* old_subject,
+	                                       const char* old_issuer, const char* old_fingerprint));
+#endif
 
 	/** @brief Callback used if user interaction is required to accept
 	 *         a changed certificate.
@@ -149,10 +159,12 @@ extern "C"
 	 *  @param common_name      The certificate registered hostname.
 	 *  @param subject          The common name of the new certificate.
 	 *  @param issuer           The issuer of the new certificate.
-	 *  @param fingerprint      The fingerprint of the new certificate.
+	 *  @param new_fingerprint  The fingerprint of the new certificate (old) or the certificate in
+	 * PEM format (VERIFY_CERT_FLAG_FP_IS_PEM set)
 	 *  @param old_subject      The common name of the old certificate.
 	 *  @param old_issuer       The issuer of the new certificate.
-	 *  @param old_fingerprint  The fingerprint of the old certificate.
+	 *  @param old_fingerprint  The fingerprint of the old certificate (old) or the certificate in
+	 * PEM format (VERIFY_CERT_FLAG_FP_IS_PEM set)
 	 *  @param flags            Flags of type VERIFY_CERT_FLAG*
 	 *
 	 *  @return 1 to accept and store a certificate, 2 to accept
@@ -169,7 +181,7 @@ extern "C"
 	 *         a certificate.
 	 *
 	 *  @param instance         Pointer to the freerdp instance.
-	 *  @param data             Pointer to certificate data in PEM format.
+	 *  @param data             Pointer to certificate data (full chain) in PEM format.
 	 *  @param length           The length of the certificate data.
 	 *  @param hostname         The hostname connecting to.
 	 *  @param port             The port connecting to.
@@ -362,15 +374,17 @@ extern "C"
 		                                                         Callback for authentication.
 		                                                         It is used to get the username/password when it was not
 		                                                         provided at connection time. */
+#if defined(WITH_FREERDP_DEPRECATED)
 		ALIGN64 pVerifyCertificate VerifyCertificate;               /**< (offset 51)
-		                                                         Callback for certificate validation.
-		                                                         Used to verify that an unknown certificate is
-		           trusted. DEPRECATED: Use VerifyChangedCertificateEx*/
-		ALIGN64 pVerifyChangedCertificate VerifyChangedCertificate; /**< (offset 52)
-		                                                         Callback for changed certificate
-		                      validation. Used when a certificate differs from stored fingerprint.
-		                      DEPRECATED: Use VerifyChangedCertificateEx */
-
+    Callback for certificate validation.
+    Used to verify that an unknown certificate is
+trusted. DEPRECATED: Use VerifyChangedCertificateEx*/
+		ALIGN64 pVerifyChangedCertificate VerifyChangedCertificate; /**<
+(offset 52) Callback for changed certificate validation. Used when a certificate differs from stored
+fingerprint. DEPRECATED: Use VerifyChangedCertificateEx */
+#else
+	    ALIGN64 UINT64 reserved[2];
+#endif
 		ALIGN64 pVerifyX509Certificate
 		    VerifyX509Certificate; /**< (offset 53)  Callback for X509 certificate verification (PEM
 		                              format) */
@@ -436,20 +450,6 @@ extern "C"
 	FREERDP_API BOOL freerdp_disconnect_before_reconnect(freerdp* instance);
 	FREERDP_API BOOL freerdp_reconnect(freerdp* instance);
 
-	FREERDP_API UINT freerdp_channel_add_init_handle_data(rdpChannelHandles* handles,
-	                                                      void* pInitHandle, void* pUserData);
-	FREERDP_API void* freerdp_channel_get_init_handle_data(rdpChannelHandles* handles,
-	                                                       void* pInitHandle);
-	FREERDP_API void freerdp_channel_remove_init_handle_data(rdpChannelHandles* handles,
-	                                                         void* pInitHandle);
-
-	FREERDP_API UINT freerdp_channel_add_open_handle_data(rdpChannelHandles* handles,
-	                                                      DWORD openHandle, void* pUserData);
-	FREERDP_API void* freerdp_channel_get_open_handle_data(rdpChannelHandles* handles,
-	                                                       DWORD openHandle);
-	FREERDP_API void freerdp_channel_remove_open_handle_data(rdpChannelHandles* handles,
-	                                                         DWORD openHandle);
-
 	FREERDP_API UINT freerdp_channels_attach(freerdp* instance);
 	FREERDP_API UINT freerdp_channels_detach(freerdp* instance);
 
@@ -474,7 +474,6 @@ extern "C"
 
 	FREERDP_API void freerdp_get_version(int* major, int* minor, int* revision);
 	FREERDP_API const char* freerdp_get_version_string(void);
-	FREERDP_API const char* freerdp_get_build_date(void);
 	FREERDP_API const char* freerdp_get_build_revision(void);
 	FREERDP_API const char* freerdp_get_build_config(void);
 

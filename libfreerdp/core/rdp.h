@@ -166,7 +166,7 @@ struct rdp_rdp
 	BYTE encrypt_key[16];
 	BYTE decrypt_update_key[16];
 	BYTE encrypt_update_key[16];
-	int rc4_key_len;
+	size_t rc4_key_len;
 	BYTE fips_sign_key[20];
 	BYTE fips_encrypt_key[24];
 	BYTE fips_decrypt_key[24];
@@ -231,13 +231,15 @@ FREERDP_LOCAL BOOL rdp_set_io_callbacks(rdpRdp* rdp, const rdpTransportIo* io_ca
 #define RDP_TAG FREERDP_TAG("core.rdp")
 #ifdef WITH_DEBUG_RDP
 #define DEBUG_RDP(...) WLog_DBG(RDP_TAG, __VA_ARGS__)
-extern const char* DATA_PDU_TYPE_STRINGS[80];
 #else
 #define DEBUG_RDP(...) \
 	do                 \
 	{                  \
 	} while (0)
 #endif
+
+const char* data_pdu_type_to_string(UINT8 type);
+const char* pdu_type_to_str(UINT16 pduType);
 
 BOOL rdp_decrypt(rdpRdp* rdp, wStream* s, UINT16* pLength, UINT16 securityFlags);
 

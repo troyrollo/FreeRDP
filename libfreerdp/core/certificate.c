@@ -30,6 +30,7 @@
 
 #include <winpr/wtypes.h>
 #include <winpr/crt.h>
+#include <winpr/file.h>
 #include <winpr/crypto.h>
 
 #include <openssl/pem.h>
@@ -661,7 +662,7 @@ static BOOL certificate_read_server_x509_certificate_chain(rdpCertificate* certi
  * @param length certificate length
  */
 
-BOOL certificate_read_server_certificate(rdpCertificate* certificate, BYTE* server_cert,
+BOOL certificate_read_server_certificate(rdpCertificate* certificate, const BYTE* server_cert,
                                          size_t length)
 {
 	BOOL ret;
@@ -671,7 +672,7 @@ BOOL certificate_read_server_certificate(rdpCertificate* certificate, BYTE* serv
 	if (length < 4) /* NULL certificate is not an error see #1795 */
 		return TRUE;
 
-	s = Stream_New(server_cert, length);
+	s = Stream_New((BYTE*)server_cert, length);
 
 	if (!s)
 	{
@@ -789,7 +790,7 @@ rdpRsaKey* key_new(const char* keyfile)
 	INT64 length;
 	char* buffer = NULL;
 	rdpRsaKey* key = NULL;
-	fp = fopen(keyfile, "rb");
+	fp = winpr_fopen(keyfile, "rb");
 
 	if (!fp)
 	{
@@ -859,9 +860,7 @@ rdpRsaKey* key_clone(const rdpRsaKey* key)
 
 	return _key;
 out_fail:
-	free(_key->Modulus);
-	free(_key->PrivateExponent);
-	free(_key);
+	key_free(_key);
 	return NULL;
 }
 
@@ -947,14 +946,7 @@ rdpCertificate* certificate_clone(rdpCertificate* certificate)
 	return _certificate;
 out_fail:
 
-	if (_certificate->x509_cert_chain)
-	{
-		free(_certificate->x509_cert_chain->array);
-		free(_certificate->x509_cert_chain);
-	}
-
-	free(_certificate->cert_info.Modulus);
-	free(_certificate);
+	certificate_free(_certificate);
 	return NULL;
 }
 

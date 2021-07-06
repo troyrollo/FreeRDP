@@ -208,6 +208,8 @@ struct xf_context
 
 	Atom UTF8_STRING;
 
+	Atom _XWAYLAND_MAY_GRAB_KEYBOARD;
+
 	Atom _NET_WM_ICON;
 	Atom _MOTIF_WM_HINTS;
 	Atom _NET_CURRENT_DESKTOP;
@@ -266,6 +268,8 @@ struct xf_context
 	button_map button_map[NUM_BUTTONS_MAPPED];
 	BYTE savedMaximizedState;
 	UINT32 locked;
+	BOOL firstPressRightCtrl;
+	BOOL ungrabKeyboardWithRightCtrl;
 };
 
 BOOL xf_create_window(xfContext* xfc);
@@ -314,12 +318,14 @@ enum XF_EXIT_CODE
 	XF_EXIT_CONN_FAILED = 131,
 	XF_EXIT_AUTH_FAILURE = 132,
 	XF_EXIT_NEGO_FAILURE = 133,
+	XF_EXIT_LOGON_FAILURE = 134,
+	XF_EXIT_ACCOUNT_LOCKED_OUT = 135,
 
 	XF_EXIT_UNKNOWN = 255,
 };
 
-#define xf_lock_x11(xfc) xf_lock_x11_(xfc, __FUNCTION__);
-#define xf_unlock_x11(xfc) xf_unlock_x11_(xfc, __FUNCTION__);
+#define xf_lock_x11(xfc) xf_lock_x11_(xfc, __FUNCTION__)
+#define xf_unlock_x11(xfc) xf_unlock_x11_(xfc, __FUNCTION__)
 
 void xf_lock_x11_(xfContext* xfc, const char* fkt);
 void xf_unlock_x11_(xfContext* xfc, const char* fkt);

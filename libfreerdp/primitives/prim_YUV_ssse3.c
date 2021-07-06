@@ -87,7 +87,8 @@ static __m128i* ssse3_YUV444Pixel(__m128i* dst, __m128i Yraw, __m128i Uraw, __m1
 		                       0x80, 0x03, 0x80, 0x80, 0x80 } };
 #endif
 	const __m128i c128 = _mm_set1_epi16(128);
-	__m128i BGRX = _mm_set_epi32(0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000);
+	__m128i BGRX = _mm_and_si128(_mm_loadu_si128(dst),
+	                             _mm_set_epi32(0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000));
 	{
 		__m128i C, D, E;
 		/* Load Y values and expand to 32 bit */
@@ -190,7 +191,7 @@ static pstatus_t ssse3_YUV420ToRGB_BGRX(const BYTE* const* pSrc, const UINT32* s
 			const BYTE r = YUV2R(Y, U, V);
 			const BYTE g = YUV2G(Y, U, V);
 			const BYTE b = YUV2B(Y, U, V);
-			dst = (__m128i*)writePixelBGRX((BYTE*)dst, 4, PIXEL_FORMAT_BGRX32, r, g, b, 0xFF);
+			dst = (__m128i*)writePixelBGRX((BYTE*)dst, 4, PIXEL_FORMAT_BGRX32, r, g, b, 0);
 
 			if (x % 2)
 			{
@@ -256,7 +257,7 @@ static pstatus_t ssse3_YUV444ToRGB_8u_P3AC4R_BGRX(const BYTE* const* pSrc, const
 			const BYTE r = YUV2R(Y, U, V);
 			const BYTE g = YUV2G(Y, U, V);
 			const BYTE b = YUV2B(Y, U, V);
-			dst = (__m128i*)writePixelBGRX((BYTE*)dst, 4, PIXEL_FORMAT_BGRX32, r, g, b, 0xFF);
+			dst = (__m128i*)writePixelBGRX((BYTE*)dst, 4, PIXEL_FORMAT_BGRX32, r, g, b, 0);
 		}
 	}
 
@@ -435,7 +436,8 @@ static INLINE void ssse3_RGBToYUV420_BGRX_UV(const BYTE* src1, const BYTE* src2,
 }
 
 static pstatus_t ssse3_RGBToYUV420_BGRX(const BYTE* pSrc, UINT32 srcFormat, UINT32 srcStep,
-                                        BYTE* pDst[3], UINT32 dstStep[3], const prim_size_t* roi)
+                                        BYTE* pDst[3], const UINT32 dstStep[3],
+                                        const prim_size_t* roi)
 {
 	UINT32 y;
 	const BYTE* argb = pSrc;
@@ -477,7 +479,7 @@ static pstatus_t ssse3_RGBToYUV420_BGRX(const BYTE* pSrc, UINT32 srcFormat, UINT
 }
 
 static pstatus_t ssse3_RGBToYUV420(const BYTE* pSrc, UINT32 srcFormat, UINT32 srcStep,
-                                   BYTE* pDst[3], UINT32 dstStep[3], const prim_size_t* roi)
+                                   BYTE* pDst[3], const UINT32 dstStep[3], const prim_size_t* roi)
 {
 	switch (srcFormat)
 	{
