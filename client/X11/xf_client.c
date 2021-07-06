@@ -26,7 +26,7 @@
 #include "config.h"
 #endif
 
-#include <assert.h>
+#include <winpr/assert.h>
 #include <float.h>
 
 #include <X11/Xlib.h>
@@ -299,8 +299,8 @@ static BOOL xf_desktop_resize(rdpContext* context)
 		XSetFunction(xfc->display, xfc->gc, GXcopy);
 		XSetFillStyle(xfc->display, xfc->gc, FillSolid);
 		XSetForeground(xfc->display, xfc->gc, 0);
-		XFillRectangle(xfc->display, xfc->drawable, xfc->gc, 0, 0, xfc->window->width,
-		               xfc->window->height);
+		XFillRectangle(xfc->display, xfc->drawable, xfc->gc, 0, 0, settings->DesktopWidth,
+		               settings->DesktopHeight);
 	}
 
 	return TRUE;
@@ -844,7 +844,7 @@ static BOOL xf_get_pixmap_info(xfContext* xfc)
 	XPixmapFormatValues* pf;
 	XPixmapFormatValues* pfs;
 	XWindowAttributes window_attributes;
-	assert(xfc->display);
+	WINPR_ASSERT(xfc->display);
 	pfs = XListPixmapFormats(xfc->display, &pf_count);
 
 	if (!pfs)
@@ -940,6 +940,7 @@ static int _xf_error_handler(Display* d, XErrorEvent* ev)
 	 * another window. This make xf_error_handler() a potential
 	 * debugger breakpoint.
 	 */
+
 	XUngrabKeyboard(d, CurrentTime);
 	return xf_error_handler(d, ev);
 }
@@ -1091,8 +1092,9 @@ static const button_map xf_button_flags[NUM_BUTTONS_MAPPED] = {
 	{ Button2, PTR_FLAGS_BUTTON3 },
 	{ Button3, PTR_FLAGS_BUTTON2 },
 	{ Button4, PTR_FLAGS_WHEEL | 0x78 },
-	{ Button5, PTR_FLAGS_WHEEL | PTR_FLAGS_WHEEL_NEGATIVE | 0x78 },
-	{ 6, PTR_FLAGS_HWHEEL | PTR_FLAGS_WHEEL_NEGATIVE | 0x78 },
+	/* Negative value is 9bit twos complement */
+	{ Button5, PTR_FLAGS_WHEEL | PTR_FLAGS_WHEEL_NEGATIVE | (0x100 - 0x78) },
+	{ 6, PTR_FLAGS_HWHEEL | PTR_FLAGS_WHEEL_NEGATIVE | (0x100 - 0x78) },
 	{ 7, PTR_FLAGS_HWHEEL | 0x78 },
 	{ 8, PTR_XFLAGS_BUTTON1 },
 	{ 9, PTR_XFLAGS_BUTTON2 },
@@ -1346,7 +1348,7 @@ static BOOL xf_post_connect(freerdp* instance)
 	update->SetKeyboardIndicators = xf_keyboard_set_indicators;
 	update->SetKeyboardImeStatus = xf_keyboard_set_ime_status;
 
-	if (!(xfc->clipboard = xf_clipboard_new(xfc)))
+	if (settings->RedirectClipboard && !(xfc->clipboard = xf_clipboard_new(xfc)))
 		return FALSE;
 
 	if (!(xfc->xfDisp = xf_disp_new(xfc)))
@@ -1415,11 +1417,8 @@ static DWORD WINAPI xf_input_thread(LPVOID arg)
 	DWORD status;
 	DWORD nCount;
 	HANDLE events[3];
-	XEvent xevent;
 	wMessage msg;
 	wMessageQueue* queue;
-	int pending_status = 1;
-	int process_status = 1;
 	freerdp* instance = (freerdp*)arg;
 	xfContext* xfc = (xfContext*)instance->context;
 	queue = freerdp_get_message_queue(instance, FREERDP_INPUT_MESSAGE_QUEUE);
@@ -1448,26 +1447,7 @@ static DWORD WINAPI xf_input_thread(LPVOID arg)
 
 				if (WaitForSingleObject(events[1], 0) == WAIT_OBJECT_0)
 				{
-					do
-					{
-						xf_lock_x11(xfc);
-						pending_status = XPending(xfc->display);
-						xf_unlock_x11(xfc);
-
-						if (pending_status)
-						{
-							xf_lock_x11(xfc);
-							ZeroMemory(&xevent, sizeof(xevent));
-							XNextEvent(xfc->display, &xevent);
-							process_status = xf_event_process(instance, &xevent);
-							xf_unlock_x11(xfc);
-
-							if (!process_status)
-								break;
-						}
-					} while (pending_status);
-
-					if (!process_status)
+					if (!xf_process_x_events(xfc->context.instance))
 					{
 						running = FALSE;
 						break;
@@ -1486,6 +1466,7 @@ static DWORD WINAPI xf_input_thread(LPVOID arg)
 	}
 
 	MessageQueue_PostQuit(queue, 0);
+	freerdp_abort_connect(xfc->context.instance);
 	ExitThread(0);
 	return 0;
 }
@@ -1547,6 +1528,12 @@ static DWORD WINAPI xf_client_thread(LPVOID param)
 		else if (freerdp_get_last_error(instance->context) ==
 		         FREERDP_ERROR_SECURITY_NEGO_CONNECT_FAILED)
 			exit_code = XF_EXIT_NEGO_FAILURE;
+ 		else if (freerdp_get_last_error(instance->context) ==
+ 				 FREERDP_ERROR_CONNECT_LOGON_FAILURE)
+ 			exit_code = XF_EXIT_LOGON_FAILURE;
+ 		else if (freerdp_get_last_error(instance->context) ==
+ 				 FREERDP_ERROR_CONNECT_ACCOUNT_LOCKED_OUT)
+ 			exit_code = XF_EXIT_ACCOUNT_LOCKED_OUT;
 		else
 			exit_code = XF_EXIT_CONN_FAILED;
 	}
@@ -1671,7 +1658,7 @@ static DWORD WINAPI xf_client_thread(LPVOID param)
 		if (!handle_window_events(instance))
 			break;
 
-		if ((status != WAIT_TIMEOUT) && (waitStatus == WAIT_OBJECT_0))
+		if ((waitStatus != WAIT_TIMEOUT) && (waitStatus == WAIT_OBJECT_0))
 		{
 			timerEvent.now = GetTickCount64();
 			PubSub_OnTimer(context->pubSub, context, &timerEvent);
@@ -1711,7 +1698,7 @@ end:
 
 DWORD xf_exit_code_from_disconnect_reason(DWORD reason)
 {
-	if (reason == 0 || (reason >= XF_EXIT_PARSE_ARGUMENTS && reason <= XF_EXIT_NEGO_FAILURE))
+	if (reason == 0 || (reason >= XF_EXIT_PARSE_ARGUMENTS && reason <= XF_EXIT_ACCOUNT_LOCKED_OUT))
 		return reason;
 	/* License error set */
 	else if (reason >= 0x100 && reason <= 0x10A)
@@ -1841,11 +1828,11 @@ static Atom get_supported_atom(xfContext* xfc, const char* atomName)
 static BOOL xfreerdp_client_new(freerdp* instance, rdpContext* context)
 {
 	xfContext* xfc = (xfContext*)instance->context;
-	assert(context);
-	assert(xfc);
-	assert(!xfc->display);
-	assert(!xfc->mutex);
-	assert(!xfc->x11event);
+	WINPR_ASSERT(context);
+	WINPR_ASSERT(xfc);
+	WINPR_ASSERT(!xfc->display);
+	WINPR_ASSERT(!xfc->mutex);
+	WINPR_ASSERT(!xfc->x11event);
 	instance->PreConnect = xf_pre_connect;
 	instance->PostConnect = xf_post_connect;
 	instance->PostDisconnect = xf_post_disconnect;
@@ -1902,9 +1889,9 @@ static BOOL xfreerdp_client_new(freerdp* instance, rdpContext* context)
 
 	if ((xfc->_NET_SUPPORTED != None) && (xfc->_NET_SUPPORTING_WM_CHECK != None))
 	{
-		Atom actual_type;
-		int actual_format;
-		unsigned long nitems, after;
+		Atom actual_type = 0;
+		int actual_format = 0;
+		unsigned long nitems = 0, after = 0;
 		unsigned char* data = NULL;
 		int status = XGetWindowProperty(xfc->display, RootWindowOfScreen(xfc->screen),
 		                                xfc->_NET_SUPPORTED, 0, 1024, False, XA_ATOM, &actual_type,
@@ -1921,6 +1908,8 @@ static BOOL xfreerdp_client_new(freerdp* instance, rdpContext* context)
 			XFree(data);
 	}
 
+	xfc->_XWAYLAND_MAY_GRAB_KEYBOARD =
+	    XInternAtom(xfc->display, "_XWAYLAND_MAY_GRAB_KEYBOARD", False);
 	xfc->_NET_WM_ICON = XInternAtom(xfc->display, "_NET_WM_ICON", False);
 	xfc->_MOTIF_WM_HINTS = XInternAtom(xfc->display, "_MOTIF_WM_HINTS", False);
 	xfc->_NET_CURRENT_DESKTOP = XInternAtom(xfc->display, "_NET_CURRENT_DESKTOP", False);

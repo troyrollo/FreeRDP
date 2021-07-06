@@ -130,8 +130,11 @@ static void set_stream_id_for_buffer(struct libusb_transfer* transfer, UINT32 st
 	user_data->streamID = streamID;
 #endif
 }
-static BOOL log_libusb_result(wLog* log, DWORD lvl, const char* fmt, int error, ...)
+static BOOL log_libusb_result_(wLog* log, DWORD lvl, const char* fmt, const char* fkt,
+                               const char* file, size_t line, int error, ...)
 {
+	WINPR_UNUSED(file);
+
 	if (error < 0)
 	{
 		char buffer[8192] = { 0 };
@@ -140,11 +143,15 @@ static BOOL log_libusb_result(wLog* log, DWORD lvl, const char* fmt, int error, 
 		vsnprintf(buffer, sizeof(buffer), fmt, ap);
 		va_end(ap);
 
-		WLog_Print(log, lvl, "%s: error %s[%d]", buffer, libusb_error_name(error), error);
+		WLog_Print(log, lvl, "[%s:%" PRIuz "]: %s: error %s[%d]", fkt, line, buffer,
+		           libusb_error_name(error), error);
 		return TRUE;
 	}
 	return FALSE;
 }
+
+#define log_libusb_result(log, lvl, fmt, error, ...) \
+	log_libusb_result_((log), (lvl), (fmt), __FUNCTION__, __FILE__, __LINE__, error, ##__VA_ARGS__)
 
 const char* usb_interface_class_to_string(uint8_t class)
 {
@@ -193,8 +200,8 @@ const char* usb_interface_class_to_string(uint8_t class)
 
 static ASYNC_TRANSFER_USER_DATA* async_transfer_user_data_new(IUDEVICE* idev, UINT32 MessageId,
                                                               size_t offset, size_t BufferSize,
-                                                              size_t packetSize, BOOL NoAck,
-                                                              t_isoch_transfer_cb cb,
+                                                              const BYTE* data, size_t packetSize,
+                                                              BOOL NoAck, t_isoch_transfer_cb cb,
                                                               URBDRC_CHANNEL_CALLBACK* callback)
 {
 	ASYNC_TRANSFER_USER_DATA* user_data = calloc(1, sizeof(ASYNC_TRANSFER_USER_DATA));
@@ -210,14 +217,19 @@ static ASYNC_TRANSFER_USER_DATA* async_transfer_user_data_new(IUDEVICE* idev, UI
 		free(user_data);
 		return NULL;
 	}
+
 	Stream_Seek(user_data->data, offset); /* Skip header offset */
+	if (data)
+		memcpy(Stream_Pointer(user_data->data), data, BufferSize);
+	else
+		user_data->OutputBufferSize = BufferSize;
 
 	user_data->noack = NoAck;
 	user_data->cb = cb;
 	user_data->callback = callback;
 	user_data->idev = idev;
 	user_data->MessageId = MessageId;
-	user_data->OutputBufferSize = BufferSize;
+
 	user_data->queue = pdev->request_queue;
 
 	return user_data;
@@ -1197,8 +1209,8 @@ static int libusb_udev_isoch_transfer(IUDEVICE* idev, URBDRC_CHANNEL_CALLBACK* c
 		return -1;
 
 	urbdrc = pdev->urbdrc;
-	user_data = async_transfer_user_data_new(idev, MessageId, 48, BufferSize, outSize + 1024, NoAck,
-	                                         cb, callback);
+	user_data = async_transfer_user_data_new(idev, MessageId, 48, BufferSize, Buffer,
+	                                         outSize + 1024, NoAck, cb, callback);
 
 	if (!user_data)
 		return -1;
@@ -1206,12 +1218,7 @@ static int libusb_udev_isoch_transfer(IUDEVICE* idev, URBDRC_CHANNEL_CALLBACK* c
 	user_data->ErrorCount = ErrorCount;
 	user_data->StartFrame = StartFrame;
 
-	if (Buffer) /* We read data, prepare a bufffer */
-	{
-		user_data->OutputBufferSize = 0;
-		memmove(Stream_Pointer(user_data->data), Buffer, BufferSize);
-	}
-	else
+	if (!Buffer)
 		Stream_Seek(user_data->data, (NumberOfPackets * 12));
 
 	iso_packet_size = BufferSize / NumberOfPackets;
@@ -1231,7 +1238,7 @@ static int libusb_udev_isoch_transfer(IUDEVICE* idev, URBDRC_CHANNEL_CALLBACK* c
 	set_stream_id_for_buffer(iso_transfer, streamID);
 	libusb_set_iso_packet_lengths(iso_transfer, iso_packet_size);
 
-	if (ArrayList_Add(pdev->request_queue, iso_transfer) < 0)
+	if (!ArrayList_Append(pdev->request_queue, iso_transfer))
 	{
 		WLog_Print(urbdrc->log, WLOG_WARN,
 		           "Failed to queue iso transfer, streamID %08" PRIx32 " already in use!",
@@ -1270,7 +1277,7 @@ static BOOL libusb_udev_control_transfer(IUDEVICE* idev, UINT32 RequestId, UINT3
 static int libusb_udev_bulk_or_interrupt_transfer(IUDEVICE* idev, URBDRC_CHANNEL_CALLBACK* callback,
                                                   UINT32 MessageId, UINT32 RequestId,
                                                   UINT32 EndpointAddress, UINT32 TransferFlags,
-                                                  BOOL NoAck, UINT32 BufferSize,
+                                                  BOOL NoAck, UINT32 BufferSize, const BYTE* data,
                                                   t_isoch_transfer_cb cb, UINT32 Timeout)
 {
 	UINT32 transfer_type;
@@ -1286,7 +1293,7 @@ static int libusb_udev_bulk_or_interrupt_transfer(IUDEVICE* idev, URBDRC_CHANNEL
 
 	urbdrc = pdev->urbdrc;
 	user_data =
-	    async_transfer_user_data_new(idev, MessageId, 36, BufferSize, 0, NoAck, cb, callback);
+	    async_transfer_user_data_new(idev, MessageId, 36, BufferSize, data, 0, NoAck, cb, callback);
 
 	if (!user_data)
 		return -1;
@@ -1342,7 +1349,7 @@ static int libusb_udev_bulk_or_interrupt_transfer(IUDEVICE* idev, URBDRC_CHANNEL
 
 	set_stream_id_for_buffer(transfer, streamID);
 
-	if (ArrayList_Add(pdev->request_queue, transfer) < 0)
+	if (!ArrayList_Append(pdev->request_queue, transfer))
 	{
 		WLog_Print(urbdrc->log, WLOG_WARN,
 		           "Failed to queue transfer, streamID %08" PRIx32 " already in use!", streamID);
@@ -1562,7 +1569,7 @@ static int udev_get_hub_handle(URBDRC_PLUGIN* urbdrc, libusb_context* ctx, UDEVI
 		error = 0;
 		WLog_Print(urbdrc->log, WLOG_DEBUG, "  Port: %d", pdev->port_number);
 		/* gen device path */
-		sprintf(pdev->path, "%" PRIu16 "-%" PRIu16 "", bus_number, pdev->port_number);
+		sprintf(pdev->path, "%" PRIu16 "-%d", bus_number, pdev->port_number);
 
 		WLog_Print(urbdrc->log, WLOG_DEBUG, "  DevPath: %s", pdev->path);
 		break;
@@ -1744,12 +1751,11 @@ size_t udev_new_by_id(URBDRC_PLUGIN* urbdrc, libusb_context* ctx, UINT16 idVendo
 
 	WLog_Print(urbdrc->log, WLOG_INFO, "VID: 0x%04" PRIX16 ", PID: 0x%04" PRIX16 "", idVendor,
 	           idProduct);
-	array = (UDEVICE**)calloc(16, sizeof(UDEVICE*));
+	total_device = libusb_get_device_list(ctx, &libusb_list);
+	array = (UDEVICE**)calloc(total_device, sizeof(UDEVICE*));
 
 	if (!array)
-		return 0;
-
-	total_device = libusb_get_device_list(ctx, &libusb_list);
+		goto fail;
 
 	for (i = 0; i < total_device; i++)
 	{
@@ -1768,6 +1774,7 @@ size_t udev_new_by_id(URBDRC_PLUGIN* urbdrc, libusb_context* ctx, UINT16 idVendo
 		free(descriptor);
 	}
 
+fail:
 	libusb_free_device_list(libusb_list, 1);
 	*devArray = (IUDEVICE**)array;
 	return num;

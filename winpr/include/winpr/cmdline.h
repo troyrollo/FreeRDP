@@ -81,6 +81,7 @@
 #define COMMAND_LINE_STATUS_PRINT_HELP -2002
 #define COMMAND_LINE_STATUS_PRINT_VERSION -2003
 #define COMMAND_LINE_STATUS_PRINT_BUILDCONFIG -2004
+#define COMMAND_LINE_STATUS_PRINT_LAST -2999
 
 /* Command-Line Macros */
 
@@ -163,6 +164,10 @@ extern "C"
 
 	WINPR_API char** CommandLineParseCommaSeparatedValuesEx(const char* name, const char* list,
 	                                                        size_t* count);
+
+	WINPR_API char* CommandLineToCommaSeparatedValues(int argc, char* argv[]);
+	WINPR_API char* CommandLineToCommaSeparatedValuesEx(int argc, char* argv[],
+	                                                    const char* filters[], size_t number);
 
 #ifdef __cplusplus
 }

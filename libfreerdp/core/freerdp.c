@@ -33,7 +33,7 @@
 #include "buildflags.h"
 #include "gateway/rpc_fault.h"
 
-#include <assert.h>
+#include <winpr/assert.h>
 
 #include <winpr/crt.h>
 #include <winpr/string.h>
@@ -54,88 +54,6 @@
 #include "settings.h"
 
 #define TAG FREERDP_TAG("core")
-
-UINT freerdp_channel_add_init_handle_data(rdpChannelHandles* handles, void* pInitHandle,
-                                          void* pUserData)
-{
-	if (!handles->init)
-		handles->init = ListDictionary_New(TRUE);
-
-	if (!handles->init)
-	{
-		WLog_ERR(TAG, "ListDictionary_New failed!");
-		return ERROR_NOT_ENOUGH_MEMORY;
-	}
-
-	if (!ListDictionary_Add(handles->init, pInitHandle, pUserData))
-	{
-		WLog_ERR(TAG, "ListDictionary_Add failed!");
-		return ERROR_INTERNAL_ERROR;
-	}
-
-	return CHANNEL_RC_OK;
-}
-
-void* freerdp_channel_get_init_handle_data(rdpChannelHandles* handles, void* pInitHandle)
-{
-	void* pUserData = NULL;
-	pUserData = ListDictionary_GetItemValue(handles->init, pInitHandle);
-	return pUserData;
-}
-
-void freerdp_channel_remove_init_handle_data(rdpChannelHandles* handles, void* pInitHandle)
-{
-	ListDictionary_Remove(handles->init, pInitHandle);
-
-	if (ListDictionary_Count(handles->init) < 1)
-	{
-		ListDictionary_Free(handles->init);
-		handles->init = NULL;
-	}
-}
-
-UINT freerdp_channel_add_open_handle_data(rdpChannelHandles* handles, DWORD openHandle,
-                                          void* pUserData)
-{
-	void* pOpenHandle = (void*)(size_t)openHandle;
-
-	if (!handles->open)
-		handles->open = ListDictionary_New(TRUE);
-
-	if (!handles->open)
-	{
-		WLog_ERR(TAG, "ListDictionary_New failed!");
-		return ERROR_NOT_ENOUGH_MEMORY;
-	}
-
-	if (!ListDictionary_Add(handles->open, pOpenHandle, pUserData))
-	{
-		WLog_ERR(TAG, "ListDictionary_Add failed!");
-		return ERROR_INTERNAL_ERROR;
-	}
-
-	return CHANNEL_RC_OK;
-}
-
-void* freerdp_channel_get_open_handle_data(rdpChannelHandles* handles, DWORD openHandle)
-{
-	void* pUserData = NULL;
-	void* pOpenHandle = (void*)(size_t)openHandle;
-	pUserData = ListDictionary_GetItemValue(handles->open, pOpenHandle);
-	return pUserData;
-}
-
-void freerdp_channel_remove_open_handle_data(rdpChannelHandles* handles, DWORD openHandle)
-{
-	void* pOpenHandle = (void*)(size_t)openHandle;
-	ListDictionary_Remove(handles->open, pOpenHandle);
-
-	if (ListDictionary_Count(handles->open) < 1)
-	{
-		ListDictionary_Free(handles->open);
-		handles->open = NULL;
-	}
-}
 
 /** Creates a new connection based on the settings found in the "instance" parameter
  *  It will use the callbacks registered on the structure to process the pre/post connect operations
@@ -166,6 +84,8 @@ BOOL freerdp_connect(freerdp* instance)
 	ResetEvent(instance->context->abortEvent);
 	rdp = instance->context->rdp;
 	settings = instance->settings;
+
+	freerdp_channels_register_instance(instance->context->channels, instance);
 
 	if (!freerdp_settings_set_default_order_support(settings))
 		return FALSE;
@@ -591,12 +511,6 @@ const char* freerdp_get_version_string(void)
 	return FREERDP_VERSION_FULL;
 }
 
-const char* freerdp_get_build_date(void)
-{
-	static char build_date[] = __DATE__ " " __TIME__;
-	return build_date;
-}
-
 const char* freerdp_get_build_config(void)
 {
 	static const char build_config[] =
@@ -610,7 +524,7 @@ const char* freerdp_get_build_config(void)
 
 const char* freerdp_get_build_revision(void)
 {
-	return GIT_REVISION;
+	return FREERDP_GIT_REVISION;
 }
 
 static wEventType FreeRDP_Events[] = {

@@ -38,9 +38,9 @@ static BOOL test_YCoCgRToRGB_8u_AC4R_func(UINT32 width, UINT32 height)
 		                       PIXEL_FORMAT_RGBX32, PIXEL_FORMAT_BGRA32, PIXEL_FORMAT_BGRX32 };
 	PROFILER_DEFINE(genericProf)
 	PROFILER_DEFINE(optProf)
-	in = _aligned_malloc(size, 16);
-	out_c = _aligned_malloc(size, 16);
-	out_sse = _aligned_malloc(size, 16);
+	in = _aligned_recalloc(NULL, 1, size, 16);
+	out_c = _aligned_recalloc(NULL, 1, size, 16);
+	out_sse = _aligned_recalloc(NULL, 1, size, 16);
 
 	if (!in || !out_c || !out_sse)
 		goto fail;
@@ -111,6 +111,8 @@ fail:
 
 int TestPrimitivesYCoCg(int argc, char* argv[])
 {
+	WINPR_UNUSED(argc);
+	WINPR_UNUSED(argv);
 	prim_test_setup(FALSE);
 
 	/* Random resolution tests */
@@ -125,13 +127,13 @@ int TestPrimitivesYCoCg(int argc, char* argv[])
 			do
 			{
 				winpr_RAND((BYTE*)&w, sizeof(w));
-				w %= 2048;
+				w %= 2048 / 4;
 			} while (w < 16);
 
 			do
 			{
 				winpr_RAND((BYTE*)&h, sizeof(h));
-				h %= 2048;
+				h %= 2048 / 4;
 			} while (h < 16);
 
 			if (!test_YCoCgRToRGB_8u_AC4R_func(w, h))
@@ -139,8 +141,8 @@ int TestPrimitivesYCoCg(int argc, char* argv[])
 		}
 	}
 
-	/* Test once with full HD */
-	if (!test_YCoCgRToRGB_8u_AC4R_func(1920, 1080))
+	/* Test once with full HD/4 */
+	if (!test_YCoCgRToRGB_8u_AC4R_func(1920 / 4, 1080 / 4))
 		return 1;
 
 	return 0;

@@ -404,7 +404,6 @@ static BOOL WTSReceiveChannelData(freerdp_peer* client, UINT16 channelId, const 
                                   size_t size, UINT32 flags, size_t totalSize)
 {
 	UINT32 i;
-	BOOL status = FALSE;
 	rdpMcs* mcs = client->context->rdp->mcs;
 
 	for (i = 0; i < mcs->channelCount; i++)
@@ -414,12 +413,13 @@ static BOOL WTSReceiveChannelData(freerdp_peer* client, UINT16 channelId, const 
 			rdpPeerChannel* channel = (rdpPeerChannel*)mcs->channels[i].handle;
 
 			if (channel)
-				status = WTSProcessChannelData(channel, channelId, data, size, flags, totalSize);
-			break;
+				return WTSProcessChannelData(channel, channelId, data, size, flags, totalSize);
 		}
 	}
 
-	return status;
+	WLog_WARN(TAG, "[%s] unknown channelId %" PRIu16 " ignored", __FUNCTION__, channelId);
+
+	return TRUE;
 }
 
 void WTSVirtualChannelManagerGetFileDescriptor(HANDLE hServer, void** fds, int* fds_count)
@@ -828,7 +828,7 @@ HANDLE WINAPI FreeRDP_WTSOpenServerA(LPSTR pServerName)
 			goto error_free;
 	}
 
-	if (HashTable_Add(g_ServerHandles, (void*)(UINT_PTR)vcm->SessionId, (void*)vcm) < 0)
+	if (!HashTable_Insert(g_ServerHandles, (void*)(UINT_PTR)vcm->SessionId, (void*)vcm))
 		goto error_free;
 
 	queueCallbacks.fnObjectFree = wts_virtual_channel_manager_free_message;
@@ -1218,7 +1218,7 @@ HANDLE WINAPI FreeRDP_WTSVirtualChannelOpenEx(DWORD SessionId, LPSTR pVirtualNam
 
 	channel->channelId = InterlockedIncrement(&vcm->dvc_channel_id_seq);
 
-	if (ArrayList_Add(vcm->dynamicVirtualChannels, channel) < 0)
+	if (!ArrayList_Append(vcm->dynamicVirtualChannels, channel))
 		goto fail;
 
 	s = Stream_New(NULL, 64);

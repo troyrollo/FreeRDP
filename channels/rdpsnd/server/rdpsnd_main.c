@@ -159,7 +159,7 @@ static UINT rdpsnd_server_recv_formats(RdpsndServerContext* context, wStream* s)
 	Stream_Seek_UINT8(s);                               /* bPad */
 
 	/* this check is only a guess as cbSize can influence the size of a format record */
-	if (Stream_GetRemainingLength(s) < context->num_client_formats * 18)
+	if (Stream_GetRemainingLength(s) < context->num_client_formats * 18ULL)
 	{
 		WLog_ERR(TAG, "not enough data in stream!");
 		return ERROR_INVALID_DATA;
@@ -422,7 +422,7 @@ static UINT rdpsnd_server_send_wave_pdu(RdpsndServerContext* context, UINT16 wTi
 	Stream_Seek(s, 3);                                       /* bPad */
 	start = Stream_GetPosition(s);
 	src = context->priv->out_buffer;
-	length = context->priv->out_pending_frames * context->priv->src_bytes_per_frame;
+	length = context->priv->out_pending_frames * context->priv->src_bytes_per_frame * 1ULL;
 
 	if (!freerdp_dsp_encode(context->priv->dsp_context, context->src_format, src, length, s))
 		return ERROR_INTERNAL_ERROR;

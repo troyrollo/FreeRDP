@@ -46,7 +46,7 @@ struct rdp_nego
 	DWORD RoutingTokenLength;
 	BOOL SendPreconnectionPdu;
 	UINT32 PreconnectionId;
-	char* PreconnectionBlob;
+	const char* PreconnectionBlob;
 
 	NEGO_STATE state;
 	BOOL TcpConnected;
@@ -277,6 +277,9 @@ static BOOL nego_tcp_connect(rdpNego* nego)
 {
 	if (!nego->TcpConnected)
 	{
+		const UINT32 TcpConnectTimeout = freerdp_settings_get_uint32(
+		    nego->transport->context->settings, FreeRDP_TcpConnectTimeout);
+
 		if (nego->GatewayEnabled)
 		{
 			if (nego->GatewayBypassLocal)
@@ -286,20 +289,21 @@ static BOOL nego_tcp_connect(rdpNego* nego)
 				          "Detecting if host can be reached locally. - This might take some time.");
 				WLog_INFO(TAG, "To disable auto detection use /gateway-usage-method:direct");
 				transport_set_gateway_enabled(nego->transport, FALSE);
-				nego->TcpConnected =
-				    transport_connect(nego->transport, nego->hostname, nego->port, 1);
+				nego->TcpConnected = transport_connect(nego->transport, nego->hostname, nego->port,
+				                                       TcpConnectTimeout);
 			}
 
 			if (!nego->TcpConnected)
 			{
 				transport_set_gateway_enabled(nego->transport, TRUE);
-				nego->TcpConnected =
-				    transport_connect(nego->transport, nego->hostname, nego->port, 15);
+				nego->TcpConnected = transport_connect(nego->transport, nego->hostname, nego->port,
+				                                       TcpConnectTimeout);
 			}
 		}
 		else
 		{
-			nego->TcpConnected = transport_connect(nego->transport, nego->hostname, nego->port, 15);
+			nego->TcpConnected =
+			    transport_connect(nego->transport, nego->hostname, nego->port, TcpConnectTimeout);
 		}
 	}
 
@@ -1067,17 +1071,15 @@ BOOL nego_send_negotiation_response(rdpNego* nego)
 
 	em = Stream_GetPosition(s);
 	Stream_SetPosition(s, bm);
-	tpkt_write_header(s, length);
-	tpdu_write_connection_confirm(s, length - 5);
-	Stream_SetPosition(s, em);
-	Stream_SealLength(s);
-
-	if (transport_write(nego->transport, s) < 0)
+	status = tpkt_write_header(s, length);
+	if (status)
 	{
-		Stream_Free(s, TRUE);
-		return FALSE;
-	}
+		tpdu_write_connection_confirm(s, length - 5);
+		Stream_SetPosition(s, em);
+		Stream_SealLength(s);
 
+		status = (transport_write(nego->transport, s) >= 0);
+	}
 	Stream_Free(s, TRUE);
 
 	if (status)
@@ -1301,7 +1303,7 @@ void nego_enable_ext(rdpNego* nego, BOOL enable_ext)
  * @param RoutingTokenLength
  */
 
-BOOL nego_set_routing_token(rdpNego* nego, BYTE* RoutingToken, DWORD RoutingTokenLength)
+BOOL nego_set_routing_token(rdpNego* nego, const BYTE* RoutingToken, DWORD RoutingTokenLength)
 {
 	if (RoutingTokenLength == 0)
 		return FALSE;
@@ -1323,7 +1325,7 @@ BOOL nego_set_routing_token(rdpNego* nego, BYTE* RoutingToken, DWORD RoutingToke
  * @param cookie
  */
 
-BOOL nego_set_cookie(rdpNego* nego, char* cookie)
+BOOL nego_set_cookie(rdpNego* nego, const char* cookie)
 {
 	if (nego->cookie)
 	{
@@ -1381,7 +1383,7 @@ void nego_set_preconnection_id(rdpNego* nego, UINT32 PreconnectionId)
  * @param blob
  */
 
-void nego_set_preconnection_blob(rdpNego* nego, char* PreconnectionBlob)
+void nego_set_preconnection_blob(rdpNego* nego, const char* PreconnectionBlob)
 {
 	nego->PreconnectionBlob = PreconnectionBlob;
 }

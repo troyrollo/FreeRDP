@@ -233,7 +233,7 @@ int freerdp_client_settings_parse_command_line(rdpSettings* settings, int argc, 
 	if (!freerdp_client_settings_post_process(settings))
 		status = -1;
 
-	WLog_DBG(TAG, "This is %s", freerdp_get_build_config());
+	WLog_DBG(TAG, "This is %s %s", freerdp_get_version_string(), freerdp_get_build_config());
 	return status;
 }
 
@@ -540,7 +540,6 @@ DWORD client_cli_verify_certificate_ex(freerdp* instance, const char* host, UINT
                                        const char* issuer, const char* fingerprint, DWORD flags)
 {
 	const char* type = "RDP-Server";
-
 	if (flags & VERIFY_CERT_FLAG_GATEWAY)
 		type = "RDP-Gateway";
 
@@ -551,7 +550,17 @@ DWORD client_cli_verify_certificate_ex(freerdp* instance, const char* host, UINT
 	printf("\tCommon Name: %s\n", common_name);
 	printf("\tSubject:     %s\n", subject);
 	printf("\tIssuer:      %s\n", issuer);
-	printf("\tThumbprint:  %s\n", fingerprint);
+	/* Newer versions of FreeRDP allow exposing the whole PEM by setting
+	 * FreeRDP_CertificateCallbackPreferPEM to TRUE
+	 */
+	if (flags & VERIFY_CERT_FLAG_FP_IS_PEM)
+	{
+		printf("\t----------- Certificate --------------\n");
+		printf("%s\n", fingerprint);
+		printf("\t--------------------------------------\n");
+	}
+	else
+		printf("\tThumbprint:  %s\n", fingerprint);
 
 	printf("The above X.509 certificate could not be verified, possibly because you do not have\n"
 	       "the CA certificate in your certificate store, or the certificate has expired.\n"
@@ -641,12 +650,32 @@ DWORD client_cli_verify_changed_certificate_ex(freerdp* instance, const char* ho
 	printf("\tCommon Name: %s\n", common_name);
 	printf("\tSubject:     %s\n", subject);
 	printf("\tIssuer:      %s\n", issuer);
-	printf("\tThumbprint:  %s\n", fingerprint);
+	/* Newer versions of FreeRDP allow exposing the whole PEM by setting
+	 * FreeRDP_CertificateCallbackPreferPEM to TRUE
+	 */
+	if (flags & VERIFY_CERT_FLAG_FP_IS_PEM)
+	{
+		printf("\t----------- Certificate --------------\n");
+		printf("%s\n", fingerprint);
+		printf("\t--------------------------------------\n");
+	}
+	else
+		printf("\tThumbprint:  %s\n", fingerprint);
 	printf("\n");
 	printf("Old Certificate details:\n");
 	printf("\tSubject:     %s\n", old_subject);
 	printf("\tIssuer:      %s\n", old_issuer);
-	printf("\tThumbprint:  %s\n", old_fingerprint);
+	/* Newer versions of FreeRDP allow exposing the whole PEM by setting
+	 * FreeRDP_CertificateCallbackPreferPEM to TRUE
+	 */
+	if (flags & VERIFY_CERT_FLAG_FP_IS_PEM)
+	{
+		printf("\t----------- Certificate --------------\n");
+		printf("%s\n", old_fingerprint);
+		printf("\t--------------------------------------\n");
+	}
+	else
+		printf("\tThumbprint:  %s\n", old_fingerprint);
 	printf("\n");
 	if (flags & VERIFY_CERT_FLAG_MATCH_LEGACY_SHA1)
 	{
@@ -730,6 +759,7 @@ BOOL client_auto_reconnect(freerdp* instance)
 
 BOOL client_auto_reconnect_ex(freerdp* instance, BOOL (*window_events)(freerdp* instance))
 {
+	UINT32 error;
 	UINT32 maxRetries;
 	UINT32 numRetries = 0;
 	rdpSettings* settings;
@@ -741,11 +771,21 @@ BOOL client_auto_reconnect_ex(freerdp* instance, BOOL (*window_events)(freerdp* 
 	maxRetries = settings->AutoReconnectMaxRetries;
 
 	/* Only auto reconnect on network disconnects. */
-	if (freerdp_error_info(instance) != 0)
-		return FALSE;
-
-	/* A network disconnect was detected */
-	WLog_INFO(TAG, "Network disconnect!");
+	error = freerdp_error_info(instance);
+	switch (error)
+	{
+		case ERRINFO_GRAPHICS_SUBSYSTEM_FAILED:
+			/* A network disconnect was detected */
+			WLog_WARN(TAG, "Disconnected by server hitting a bug or resource limit [%s]",
+			          freerdp_get_error_info_string(error));
+			break;
+		case ERRINFO_SUCCESS:
+			/* A network disconnect was detected */
+			WLog_INFO(TAG, "Network disconnect!");
+			break;
+		default:
+			return FALSE;
+	}
 
 	if (!settings->AutoReconnectionEnabled)
 	{

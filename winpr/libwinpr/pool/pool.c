@@ -106,6 +106,7 @@ static void threads_close(void* thread)
 static BOOL InitializeThreadpool(PTP_POOL pool)
 {
 	int index;
+	wObject* obj;
 	HANDLE thread;
 
 	if (pool->Threads)
@@ -126,7 +127,8 @@ static BOOL InitializeThreadpool(PTP_POOL pool)
 	if (!(pool->Threads = ArrayList_New(TRUE)))
 		goto fail_thread_array;
 
-	pool->Threads->object.fnObjectFree = threads_close;
+	obj = ArrayList_Object(pool->Threads);
+	obj->fnObjectFree = threads_close;
 
 	for (index = 0; index < 4; index++)
 	{
@@ -135,7 +137,7 @@ static BOOL InitializeThreadpool(PTP_POOL pool)
 			goto fail_create_threads;
 		}
 
-		if (ArrayList_Add(pool->Threads, thread) < 0)
+		if (!ArrayList_Append(pool->Threads, thread))
 			goto fail_create_threads;
 	}
 
@@ -240,7 +242,7 @@ BOOL winpr_SetThreadpoolThreadMinimum(PTP_POOL ptpp, DWORD cthrdMic)
 			return FALSE;
 		}
 
-		if (ArrayList_Add(ptpp->Threads, thread) < 0)
+		if (!ArrayList_Append(ptpp->Threads, thread))
 			return FALSE;
 	}
 

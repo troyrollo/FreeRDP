@@ -33,6 +33,11 @@
 
 #include "sspi.h"
 
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-prototypes"
+#endif
+
 static wLog* g_Log = NULL;
 
 static INIT_ONCE g_Initialized = INIT_ONCE_STATIC_INIT;
@@ -409,7 +414,7 @@ const char* GetSecurityStatusString(SECURITY_STATUS status)
 			return "SEC_I_NO_RENEGOTIATION";
 	}
 
-	return "SEC_E_UNKNOWN";
+	return NtStatus2Tag(status);
 }
 
 BOOL IsSecurityStatusError(SECURITY_STATUS status)
@@ -1123,3 +1128,7 @@ SecurityFunctionTableW sspi_SecurityFunctionTableW = {
 	sspi_DecryptMessage,              /* DecryptMessage */
 	sspi_SetContextAttributesW,       /* SetContextAttributes */
 };
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif

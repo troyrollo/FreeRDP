@@ -312,7 +312,8 @@ int CommandLineParseArgumentsA(int argc, LPSTR* argv, COMMAND_LINE_ARGUMENT_A* o
 
 				if (value)
 				{
-					if (options[j].Flags & (COMMAND_LINE_VALUE_FLAG | COMMAND_LINE_VALUE_BOOL))
+					if (!(options[j].Flags &
+					      (COMMAND_LINE_VALUE_OPTIONAL | COMMAND_LINE_VALUE_REQUIRED)))
 					{
 						log_error(flags, "Failed at index %d [%s]: Unexpected value", i, argv[i]);
 						return COMMAND_LINE_ERROR_UNEXPECTED_VALUE;
@@ -556,4 +557,59 @@ char** CommandLineParseCommaSeparatedValuesEx(const char* name, const char* list
 char** CommandLineParseCommaSeparatedValues(const char* list, size_t* count)
 {
 	return CommandLineParseCommaSeparatedValuesEx(NULL, list, count);
+}
+
+char* CommandLineToCommaSeparatedValues(int argc, char* argv[])
+{
+	return CommandLineToCommaSeparatedValuesEx(argc, argv, NULL, 0);
+}
+
+static const char* filtered(const char* arg, const char* filters[], size_t number)
+{
+	size_t x;
+	if (number == 0)
+		return arg;
+	for (x = 0; x < number; x++)
+	{
+		const char* filter = filters[x];
+		size_t len = strlen(filter);
+		if (_strnicmp(arg, filter, len) == 0)
+			return &arg[len];
+	}
+	return NULL;
+}
+
+char* CommandLineToCommaSeparatedValuesEx(int argc, char* argv[], const char* filters[],
+                                          size_t number)
+{
+	int x;
+	char* str = NULL;
+	size_t offset = 0;
+	size_t size = argc + 1;
+	if ((argc <= 0) || !argv)
+		return NULL;
+
+	for (x = 0; x < argc; x++)
+		size += strlen(argv[x]);
+
+	str = calloc(size, sizeof(char));
+	if (!str)
+		return NULL;
+	for (x = 0; x < argc; x++)
+	{
+		int rc;
+		const char* arg = filtered(argv[x], filters, number);
+		if (!arg)
+			continue;
+		rc = _snprintf(&str[offset], size - offset, "%s,", arg);
+		if (rc <= 0)
+		{
+			free(str);
+			return NULL;
+		}
+		offset += (size_t)rc;
+	}
+	if (offset > 0)
+		str[offset - 1] = '\0';
+	return str;
 }

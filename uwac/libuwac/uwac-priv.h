@@ -180,6 +180,8 @@ struct uwac_seat
 		xkb_mod_mask_t control_mask;
 		xkb_mod_mask_t alt_mask;
 		xkb_mod_mask_t shift_mask;
+		xkb_mod_mask_t caps_mask;
+		xkb_mod_mask_t num_mask;
 	} xkb;
 	uint32_t modifiers;
 	int32_t repeat_rate_sec, repeat_rate_nsec;
@@ -235,8 +237,8 @@ struct uwac_window
 
 	struct wl_region* opaque_region;
 	struct wl_region* input_region;
-	SSIZE_T drawingBufferIdx;
-	SSIZE_T pendingBufferIdx;
+	ssize_t drawingBufferIdx;
+	ssize_t pendingBufferIdx;
 	struct wl_surface* surface;
 	struct wl_shell_surface* shell_surface;
 	struct xdg_surface* xdg_surface;

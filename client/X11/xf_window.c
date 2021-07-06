@@ -123,11 +123,11 @@ static void xf_SetWindowTitleText(xfContext* xfc, Window window, const char* nam
  */
 void xf_SendClientEvent(xfContext* xfc, Window window, Atom atom, unsigned int numArgs, ...)
 {
-	XEvent xevent;
+	XEvent xevent = { 0 };
 	unsigned int i;
 	va_list argp;
 	va_start(argp, numArgs);
-	ZeroMemory(&xevent, sizeof(XEvent));
+
 	xevent.xclient.type = ClientMessage;
 	xevent.xclient.serial = 0;
 	xevent.xclient.send_event = False;
@@ -497,19 +497,27 @@ xfWindow* xf_CreateDesktopWindow(xfContext* xfc, char* name, int width, int heig
 	}
 	else
 	{
-		void* mem;
-		ftruncate(window->shmid, sizeof(window->handle));
-		mem = mmap(0, sizeof(window->handle), PROT_READ | PROT_WRITE, MAP_SHARED, window->shmid, 0);
-
-		if (mem == MAP_FAILED)
+		int rc = ftruncate(window->shmid, sizeof(window->handle));
+		if (rc != 0)
 		{
-			DEBUG_X11("xf_CreateDesktopWindow: failed to assign pointer to the memory address - "
-			          "shmat()\n");
+			DEBUG_X11("%s: ftruncate failed with %s [%d]", __FUNCTION__, strerror(rc), rc);
 		}
 		else
 		{
-			window->xfwin = mem;
-			*window->xfwin = window->handle;
+			void* mem = mmap(0, sizeof(window->handle), PROT_READ | PROT_WRITE, MAP_SHARED,
+			                 window->shmid, 0);
+
+			if (mem == MAP_FAILED)
+			{
+				DEBUG_X11(
+				    "xf_CreateDesktopWindow: failed to assign pointer to the memory address - "
+				    "shmat()\n");
+			}
+			else
+			{
+				window->xfwin = mem;
+				*window->xfwin = window->handle;
+			}
 		}
 	}
 
@@ -574,6 +582,10 @@ xfWindow* xf_CreateDesktopWindow(xfContext* xfc, char* name, int width, int heig
 	}
 
 	window->floatbar = xf_floatbar_new(xfc, window->handle, name, settings->Floatbar);
+
+	if (xfc->_XWAYLAND_MAY_GRAB_KEYBOARD)
+		xf_SendClientEvent(xfc, window->handle, xfc->_XWAYLAND_MAY_GRAB_KEYBOARD, 1, 1);
+
 	return window;
 }
 
@@ -818,6 +830,9 @@ int xf_AppWindowCreate(xfContext* xfc, xfAppWindow* appWindow)
 	             StructureNotifyMask | SubstructureNotifyMask | SubstructureRedirectMask |
 	             FocusChangeMask | PropertyChangeMask | ColormapChangeMask | OwnerGrabButtonMask;
 	XSelectInput(xfc->display, appWindow->handle, input_mask);
+
+	if (xfc->_XWAYLAND_MAY_GRAB_KEYBOARD)
+		xf_SendClientEvent(xfc, appWindow->handle, xfc->_XWAYLAND_MAY_GRAB_KEYBOARD, 1, 1);
 
 	return 1;
 }
@@ -1072,6 +1087,9 @@ void xf_DestroyWindow(xfContext* xfc, xfAppWindow* appWindow)
 	if (!appWindow)
 		return;
 
+	if (xfc->appWindow == appWindow)
+		xfc->appWindow = NULL;
+
 	if (appWindow->gc)
 		XFreeGC(xfc->display, appWindow->gc);
 
@@ -1109,7 +1127,10 @@ xfAppWindow* xf_AppWindowFromX11Window(xfContext* xfc, Window wnd)
 		appWindow = xf_rail_get_window(xfc, *(UINT64*)pKeys[index]);
 
 		if (!appWindow)
+		{
+			free(pKeys);
 			return NULL;
+		}
 
 		if (appWindow->handle == wnd)
 		{

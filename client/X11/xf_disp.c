@@ -46,7 +46,6 @@ struct _xfDispContext
 	UINT64 lastSentDate;
 	int targetWidth, targetHeight;
 	BOOL activated;
-	BOOL waitingResize;
 	BOOL fullscreen;
 	UINT16 lastSentDesktopOrientation;
 	UINT32 lastSentDesktopScaleFactor;
@@ -113,11 +112,10 @@ static BOOL xf_disp_sendResize(xfDispContext* xfDisp)
 	if (GetTickCount64() - xfDisp->lastSentDate < RESIZE_MIN_DELAY)
 		return TRUE;
 
-	xfDisp->lastSentDate = GetTickCount64();
-
 	if (!xf_disp_settings_changed(xfDisp))
 		return TRUE;
 
+	xfDisp->lastSentDate = GetTickCount64();
 	if (xfc->fullscreen && (settings->MonitorCount > 0))
 	{
 		if (xf_disp_sendLayout(xfDisp->disp, settings->MonitorDefArray, settings->MonitorCount) !=
@@ -126,7 +124,6 @@ static BOOL xf_disp_sendResize(xfDispContext* xfDisp)
 	}
 	else
 	{
-		xfDisp->waitingResize = TRUE;
 		layout.Flags = DISPLAY_CONTROL_MONITOR_PRIMARY;
 		layout.Top = layout.Left = 0;
 		layout.Width = xfDisp->targetWidth;
@@ -134,8 +131,8 @@ static BOOL xf_disp_sendResize(xfDispContext* xfDisp)
 		layout.Orientation = settings->DesktopOrientation;
 		layout.DesktopScaleFactor = settings->DesktopScaleFactor;
 		layout.DeviceScaleFactor = settings->DeviceScaleFactor;
-		layout.PhysicalWidth = xfDisp->targetWidth;
-		layout.PhysicalHeight = xfDisp->targetHeight;
+		layout.PhysicalWidth = xfDisp->targetWidth / 75 * 25.4f;
+		layout.PhysicalHeight = xfDisp->targetHeight / 75 * 25.4f;
 
 		if (IFCALLRESULT(CHANNEL_RC_OK, xfDisp->disp->SendMonitorLayout, xfDisp->disp, 1,
 		                 &layout) != CHANNEL_RC_OK)
@@ -143,6 +140,16 @@ static BOOL xf_disp_sendResize(xfDispContext* xfDisp)
 	}
 
 	return xf_update_last_sent(xfDisp);
+}
+
+static BOOL xf_disp_queueResize(xfDispContext* xfDisp, UINT32 width, UINT32 height)
+{
+	if ((xfDisp->targetWidth == (INT64)width) && (xfDisp->targetHeight == (INT64)height))
+		return TRUE;
+	xfDisp->targetWidth = width;
+	xfDisp->targetHeight = height;
+	xfDisp->lastSentDate = GetTickCount64();
+	return xf_disp_sendResize(xfDisp);
 }
 
 static BOOL xf_disp_set_window_resizable(xfDispContext* xfDisp)
@@ -195,9 +202,7 @@ static void xf_disp_OnActivated(void* context, ActivatedEventArgs* e)
 	if (!xf_disp_check_context(context, &xfc, &xfDisp, &settings))
 		return;
 
-	xfDisp->waitingResize = FALSE;
-
-	if (xfDisp->activated && !settings->Fullscreen)
+	if (xfDisp->activated && !xfc->fullscreen)
 	{
 		xf_disp_set_window_resizable(xfDisp);
 
@@ -218,8 +223,6 @@ static void xf_disp_OnGraphicsReset(void* context, GraphicsResetEventArgs* e)
 
 	if (!xf_disp_check_context(context, &xfc, &xfDisp, &settings))
 		return;
-
-	xfDisp->waitingResize = FALSE;
 
 	if (xfDisp->activated && !settings->Fullscreen)
 	{
@@ -393,9 +396,7 @@ BOOL xf_disp_handle_configureNotify(xfContext* xfc, int width, int height)
 	if (!xfDisp)
 		return FALSE;
 
-	xfDisp->targetWidth = width;
-	xfDisp->targetHeight = height;
-	return xf_disp_sendResize(xfDisp);
+	return xf_disp_queueResize(xfDisp, width, height);
 }
 
 static UINT xf_DisplayControlCaps(DispClientContext* disp, UINT32 maxNumMonitors,

@@ -33,7 +33,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <tchar.h>
-#include <assert.h>
+#include <winpr/assert.h>
 #include <sys/types.h>
 
 #include <freerdp/log.h>
@@ -41,6 +41,7 @@
 #include <freerdp/freerdp.h>
 #include <freerdp/constants.h>
 
+#include <freerdp/locale/keyboard.h>
 #include <freerdp/codec/region.h>
 #include <freerdp/client/cmdline.h>
 #include <freerdp/client/channels.h>
@@ -190,9 +191,10 @@ static BOOL wf_desktop_resize(rdpContext* context)
 
 static BOOL wf_pre_connect(freerdp* instance)
 {
+	UINT32 rc;
 	wfContext* wfc;
-	int desktopWidth;
-	int desktopHeight;
+	UINT32 desktopWidth;
+	UINT32 desktopHeight;
 	rdpContext* context;
 	rdpSettings* settings;
 
@@ -237,12 +239,12 @@ static BOOL wf_pre_connect(freerdp* instance)
 
 	if (desktopWidth != settings->DesktopWidth)
 	{
-		freerdp_set_param_uint32(settings, FreeRDP_DesktopWidth, desktopWidth);
+		freerdp_settings_set_uint32(settings, FreeRDP_DesktopWidth, desktopWidth);
 	}
 
 	if (desktopHeight != settings->DesktopHeight)
 	{
-		freerdp_set_param_uint32(settings, FreeRDP_DesktopHeight, desktopHeight);
+		freerdp_settings_set_uint32(settings, FreeRDP_DesktopHeight, desktopHeight);
 	}
 
 	if ((settings->DesktopWidth < 64) || (settings->DesktopHeight < 64) ||
@@ -256,8 +258,8 @@ static BOOL wf_pre_connect(freerdp* instance)
 	if (!freerdp_client_load_addins(context->channels, instance->settings))
 		return -1;
 
-	freerdp_set_param_uint32(settings, FreeRDP_KeyboardLayout,
-	                         (int)GetKeyboardLayout(0) & 0x0000FFFF);
+	rc = freerdp_keyboard_init(freerdp_settings_get_uint32(settings, FreeRDP_KeyboardLayout));
+	freerdp_settings_set_uint32(settings, FreeRDP_KeyboardLayout, rc);
 	PubSub_SubscribeChannelConnected(instance->context->pubSub, wf_OnChannelConnectedEventHandler);
 	PubSub_SubscribeChannelDisconnected(instance->context->pubSub,
 	                                    wf_OnChannelDisconnectedEventHandler);
@@ -270,6 +272,11 @@ static void wf_add_system_menu(wfContext* wfc)
 	MENUITEMINFO item_info;
 
 	if (wfc->fullscreen && !wfc->fullscreen_toggle)
+	{
+		return;
+	}
+
+	if (wfc->context.settings->DynamicResolutionUpdate)
 	{
 		return;
 	}
@@ -369,8 +376,8 @@ static BOOL wf_post_connect(freerdp* instance)
 
 	if (!wfc->hwnd)
 	{
-		wfc->hwnd = CreateWindowEx((DWORD)NULL, wfc->wndClassName, wfc->window_title, dwStyle, 0, 0,
-		                           0, 0, wfc->hWndParent, NULL, wfc->hInstance, NULL);
+		wfc->hwnd = CreateWindowEx(0, wfc->wndClassName, wfc->window_title, dwStyle, 0, 0, 0, 0,
+		                           wfc->hWndParent, NULL, wfc->hInstance, NULL);
 		SetWindowLongPtr(wfc->hwnd, GWLP_USERDATA, (LONG_PTR)wfc);
 	}
 
@@ -563,6 +570,8 @@ static DWORD wf_verify_certificate_ex(freerdp* instance, const char* host, UINT1
 	    flags & VERIFY_CERT_FLAG_MISMATCH ? "Yes" : "No");
 	caption = wf_format_text(L"Verify certificate for %S:%hu", host, port);
 
+	WINPR_UNUSED(instance);
+
 	if (!buffer || !caption)
 		goto fail;
 
@@ -617,6 +626,7 @@ static DWORD wf_verify_changed_certificate_ex(freerdp* instance, const char* hos
 	    flags & VERIFY_CERT_FLAG_MISMATCH ? "Yes" : "No", old_subject, old_issuer, old_fingerprint);
 	caption = wf_format_text(L"Verify certificate change for %S:%hu", host, port);
 
+	WINPR_UNUSED(instance);
 	if (!buffer || !caption)
 		goto fail;
 
@@ -671,7 +681,7 @@ static DWORD WINAPI wf_input_thread(LPVOID arg)
 	wMessage message;
 	wMessageQueue* queue;
 	freerdp* instance = (freerdp*)arg;
-	assert(NULL != instance);
+	WINPR_ASSERT(NULL != instance);
 	status = 1;
 	queue = freerdp_get_message_queue(instance, FREERDP_INPUT_MESSAGE_QUEUE);
 
@@ -842,7 +852,7 @@ static DWORD WINAPI wf_keyboard_thread(LPVOID lpParam)
 	wfContext* wfc;
 	HHOOK hook_handle;
 	wfc = (wfContext*)lpParam;
-	assert(NULL != wfc);
+	WINPR_ASSERT(NULL != wfc);
 	hook_handle = SetWindowsHookEx(WH_KEYBOARD_LL, wf_ll_kbd_proc, wfc->hInstance, 0);
 
 	if (hook_handle)
@@ -870,23 +880,6 @@ static DWORD WINAPI wf_keyboard_thread(LPVOID lpParam)
 
 	WLog_DBG(TAG, "Keyboard thread exited.");
 	ExitThread(0);
-	return (DWORD)NULL;
-}
-
-static rdpSettings* freerdp_client_get_settings(wfContext* wfc)
-{
-	return wfc->context.settings;
-}
-
-static int freerdp_client_focus_in(wfContext* wfc)
-{
-	PostThreadMessage(wfc->mainThreadId, WM_SETFOCUS, 0, 1);
-	return 0;
-}
-
-static int freerdp_client_focus_out(wfContext* wfc)
-{
-	PostThreadMessage(wfc->mainThreadId, WM_KILLFOCUS, 0, 1);
 	return 0;
 }
 
@@ -911,7 +904,7 @@ void wf_size_scrollbars(wfContext* wfc, UINT32 client_width, UINT32 client_heigh
 	// prevent infinite message loop
 	wfc->disablewindowtracking = TRUE;
 
-	if (wfc->context.settings->SmartSizing)
+	if (wfc->context.settings->SmartSizing || wfc->context.settings->DynamicResolutionUpdate)
 	{
 		wfc->xCurrentScroll = 0;
 		wfc->yCurrentScroll = 0;
@@ -1066,6 +1059,7 @@ static BOOL wfreerdp_client_new(freerdp* instance, rdpContext* context)
 
 static void wfreerdp_client_free(freerdp* instance, rdpContext* context)
 {
+	WINPR_UNUSED(instance);
 	if (!context)
 		return;
 }
